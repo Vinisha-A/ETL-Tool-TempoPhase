@@ -51,7 +51,7 @@ def send_validation_email(run, workflow=None, recipient_email=None):
     started_at_str = run.started_at.strftime('%Y-%m-%d %I:%M %p') if run.started_at else 'N/A'
     completed_at_str = run.completed_at.strftime('%Y-%m-%d %I:%M %p') if run.completed_at else 'N/A'
 
-    subject = f"[Data Quality Validation] Workflow Execution Status - {workflow_name}"
+    subject = f"[ETL Job] Workflow Execution Status - {workflow_name}"
     
     triggered_by_name = (run.triggered_by.get_full_name() or run.triggered_by.username) if run.triggered_by else "System"
 
@@ -65,14 +65,14 @@ def send_validation_email(run, workflow=None, recipient_email=None):
         f"Status: {status_val}\n"
         f"Started At: {started_at_str}\n"
         f"Completed At: {completed_at_str}\n\n"
-        f"Total Checks: {run.total_checks}\n"
-        f"Passed: {run.passed_checks}\n"
-        f"Failed: {run.failed_checks}\n\n"
+        f"Total Steps: {run.total_checks}\n"
+        f"Extracted: {run.records_extracted}\n"
+        f"Loaded: {run.records_loaded}\n\n"
         f"Triggered By User Name: {triggered_by_name}\n"
         f"Recipient Email ID: {recipient_email}\n\n"
-        f"Please find the attached validation report.\n\n"
+        f"Please find the attached ETL execution report.\n\n"
         f"Regards,\n"
-        f"Team Qualix"
+        f"Team DataBridge"
     )
 
     # Step 3: Store Email Log (pending status first)

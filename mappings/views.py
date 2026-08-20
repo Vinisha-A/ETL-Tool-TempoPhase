@@ -196,6 +196,18 @@ def mapping_create_view(request):
             target_table = request.POST.get('target_table', '')
             is_draft = request.POST.get('is_draft', 'false') == 'true'
 
+            # ETL parameters
+            query_type = request.POST.get('query_type', 'table')
+            custom_query = request.POST.get('custom_query', '')
+            filter_column = request.POST.get('filter_column', '')
+            filter_condition = request.POST.get('filter_condition', '')
+            load_mode = request.POST.get('load_mode', 'truncate')
+            incremental_column = request.POST.get('incremental_column', '')
+            incremental_value = request.POST.get('incremental_value', '')
+
+            if query_type == 'custom_query':
+                source_table = 'Custom Query'
+
             # Resolving Source Date Filters
             source_date_column = request.POST.get('source_date_column', '')
             source_date_filter_type = request.POST.get('source_date_filter_type', 'none')
@@ -261,6 +273,13 @@ def mapping_create_view(request):
                 'created_by': request.user,
                 'modified_by': request.user,
                 'is_draft': is_draft,
+                'query_type': query_type,
+                'custom_query': custom_query,
+                'filter_column': filter_column,
+                'filter_condition': filter_condition,
+                'load_mode': load_mode,
+                'incremental_column': incremental_column,
+                'incremental_value': incremental_value,
                 'source_date_column': source_date_column,
                 'source_date_filter_type': source_date_filter_type,
                 'source_date_filter_start': source_date_filter_start,
@@ -534,6 +553,18 @@ def mapping_edit_view(request, mapping_id):
             target_table = request.POST.get('target_table', '')
             is_draft = request.POST.get('is_draft', 'false') == 'true'
 
+            # ETL parameters
+            query_type = request.POST.get('query_type', 'table')
+            custom_query = request.POST.get('custom_query', '')
+            filter_column = request.POST.get('filter_column', '')
+            filter_condition = request.POST.get('filter_condition', '')
+            load_mode = request.POST.get('load_mode', 'truncate')
+            incremental_column = request.POST.get('incremental_column', '')
+            incremental_value = request.POST.get('incremental_value', '')
+
+            if query_type == 'custom_query':
+                source_table = 'Custom Query'
+
             # Resolving Source Date Filters
             source_date_column = request.POST.get('source_date_column', '')
             source_date_filter_type = request.POST.get('source_date_filter_type', 'none')
@@ -584,6 +615,13 @@ def mapping_edit_view(request, mapping_id):
                 'target_table': target_table,
                 'is_draft': is_draft,
                 'modified_by': request.user,
+                'query_type': query_type,
+                'custom_query': custom_query,
+                'filter_column': filter_column,
+                'filter_condition': filter_condition,
+                'load_mode': load_mode,
+                'incremental_column': incremental_column,
+                'incremental_value': incremental_value,
                 'source_date_column': source_date_column,
                 'source_date_filter_type': source_date_filter_type,
                 'source_date_filter_start': source_date_filter_start,

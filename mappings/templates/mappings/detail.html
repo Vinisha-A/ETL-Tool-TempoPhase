@@ -10,7 +10,7 @@
         {% if user_profile.role != 'auditor' %}
         <div class="d-flex gap-8">
             <button class="btn btn-primary btn-sm" onclick="triggerValidation({{ mapping.id }})">
-                <i class="fas fa-play"></i> Run Monitor
+                <i class="fas fa-play"></i> Run ETL Job
             </button>
             <a href="{% url 'mappings:edit' mapping.id %}" class="btn btn-outline btn-sm">
                 <i class="fas fa-edit"></i> Edit
@@ -51,6 +51,37 @@
                     {% endif %}
                     <p><strong>Schema:</strong> {{ mapping.target_schema|default:"N/A" }}</p>
                     <p><strong>Table:</strong> {{ mapping.target_table }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ETL Config Info -->
+        <div class="mb-24" style="background: var(--bg-input); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border-light);">
+            <h3 style="font-size: 1rem; color: var(--primary); font-weight: 600; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-cogs"></i> ETL Configuration
+            </h3>
+            <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px;">
+                    <p style="margin: 4px 0;"><strong>Query Type:</strong> {{ mapping.get_query_type_display }}</p>
+                    {% if mapping.query_type == 'custom_query' %}
+                        <p style="margin: 4px 0;"><strong>Custom Query:</strong></p>
+                        <pre style="background: var(--bg-card); padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border-light); font-size: 0.85rem; margin-top: 4px; overflow-x: auto;">{{ mapping.custom_query }}</pre>
+                    {% else %}
+                        {% if mapping.filter_column %}
+                            <p style="margin: 4px 0;"><strong>Filter:</strong> Column: <code>{{ mapping.filter_column }}</code> Condition: <code>{{ mapping.filter_condition }}</code></p>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                <div style="flex: 1; min-width: 250px;">
+                    <p style="margin: 4px 0;"><strong>Load Mode:</strong> {{ mapping.get_load_mode_display }}</p>
+                    {% if mapping.load_mode == 'incremental' %}
+                        <p style="margin: 4px 0;"><strong>Incremental Column:</strong> <code>{{ mapping.incremental_column }}</code></p>
+                        {% if mapping.incremental_value %}
+                            <p style="margin: 4px 0;"><strong>Starting Override Value:</strong> <code>{{ mapping.incremental_value }}</code></p>
+                        {% else %}
+                            <p style="margin: 4px 0;"><strong>Starting Override Value:</strong> <span class="text-muted">Derived dynamically from target max</span></p>
+                        {% endif %}
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -115,7 +146,6 @@
                         <th></th>
                         <th>Target Column</th>
                         <th>Target Type</th>
-                        <th>Monitors</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -126,11 +156,6 @@
                         <td style="text-align: center; color: var(--text-muted);"><i class="fas fa-arrow-right"></i></td>
                         <td class="fw-600">{{ cm.target_column }}</td>
                         <td><span class="datatype-tag">{{ cm.target_datatype|default:"—" }}</span></td>
-                        <td>
-                            {% for rule in cm.rules.all %}
-                                <span class="badge badge-primary" style="margin: 2px;">{{ rule.get_operation_display }}</span>
-                            {% endfor %}
-                        </td>
                     </tr>
                     {% empty %}
                     <tr>

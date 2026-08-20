@@ -43,6 +43,9 @@ class ValidationRun(models.Model):
     passed_checks = models.IntegerField(default=0)
     failed_checks = models.IntegerField(default=0)
 
+    records_extracted = models.IntegerField(default=0)
+    records_loaded = models.IntegerField(default=0)
+
     error_message = models.TextField(blank=True)
     parameters = models.JSONField(default=dict, blank=True)
 
@@ -136,6 +139,13 @@ class ValidationResult(models.Model):
     @property
     def source_op_display(self):
         op = self.operation
+        if op == 'extraction':
+            return f"Extracted: {self.source_value} rows"
+        elif op == 'target_preparation':
+            return f"Load Mode: {self.source_value}"
+        elif op == 'loading':
+            return f"Loaded: {self.source_value} rows"
+
         op_map = {
             'count': 'Count',
             'row_count': 'Row Count Match',
@@ -162,6 +172,9 @@ class ValidationResult(models.Model):
     @property
     def target_op_display(self):
         op = self.operation
+        if op in ('extraction', 'target_preparation', 'loading'):
+            return f"Status: {self.target_value}"
+
         op_map = {
             'count': 'Count',
             'row_count': 'Row Count Match',

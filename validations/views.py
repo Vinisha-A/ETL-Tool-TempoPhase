@@ -91,8 +91,8 @@ def api_validation_progress(request, run_id):
         'status': run.status,
         'progress': run.progress,
         'total': run.total_checks,
-        'passed': run.passed_checks,
-        'failed': run.failed_checks,
+        'passed': run.records_extracted,
+        'failed': run.records_loaded,
     })
 
 
@@ -293,6 +293,7 @@ def quick_validate_view(request):
             target_catalog = request.POST.get('target_catalog', '')
             target_schema = request.POST.get('target_schema', '')
             target_table = request.POST.get('target_table', '')
+            load_mode = request.POST.get('load_mode', 'truncate')
             
             # Resolving Source Date Filters
             source_date_column = request.POST.get('source_date_column', '')
@@ -360,6 +361,7 @@ def quick_validate_view(request):
                 'target_catalog': target_catalog,
                 'target_schema': target_schema,
                 'target_table': target_table,
+                'load_mode': load_mode,
                 'created_by': request.user,
                 'source_date_column': source_date_column,
                 'source_date_filter_type': source_date_filter_type,
@@ -534,12 +536,12 @@ def quick_validate_view(request):
                     engine.execute()
                     if run.triggered_by:
                         from dashboard.models import Notification
-                        status_text = "Passed" if run.failed_checks == 0 else "Failed"
+                        status_text = "Success"
                         Notification.objects.create(
                             user=run.triggered_by,
-                            title=f"Validation Run {run.id} Completed",
-                            message=f"Pipeline: {run.mapping.name}\nStatus: {status_text} ({run.passed_checks}/{run.total_checks} checks passed)",
-                            level='success' if run.failed_checks == 0 else 'warning'
+                            title=f"ETL Run {run.id} Completed",
+                            message=f"Pipeline: {run.mapping.name}\nStatus: {status_text} (Extracted: {run.records_extracted} / Loaded: {run.records_loaded} rows)",
+                            level='success'
                         )
                 except Exception as e:
                     logger.error(f"Sync quick validation failed: {e}")
@@ -547,17 +549,17 @@ def quick_validate_view(request):
                         from dashboard.models import Notification
                         Notification.objects.create(
                             user=run.triggered_by,
-                            title=f"Validation Run {run.id} Failed",
+                            title=f"ETL Run {run.id} Failed",
                             message=f"Pipeline: {run.mapping.name}\nError: {e}",
                             level='error'
                         )
             
-            messages.success(request, 'Quick validation triggered successfully!')
+            messages.success(request, 'Quick ETL pipeline triggered successfully!')
             return redirect('validations:progress', run_id=run.id)
             
         except Exception as e:
-            logger.error(f"Quick validation creation error: {e}")
-            messages.error(request, f"Failed to run quick validation: {str(e)}")
+            logger.error(f"Quick ETL execution error: {e}")
+            messages.error(request, f"Failed to run quick ETL: {str(e)}")
             return redirect('dashboard:index')
             
     return redirect('dashboard:index')

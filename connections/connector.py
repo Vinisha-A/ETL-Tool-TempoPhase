@@ -1990,5 +1990,87 @@ class ConnectorEngine:
                 return df.iloc[offset:offset+limit] if df is not None else None
             except Exception as ex:
                 logger.error(f"Error getting database preview: {ex}")
-                return None 
+                return None
+
+    def write_data(self, df, schema=None, table=None, catalog=None, mode='append'):
+        """Write a Pandas DataFrame to this connection (database table or file)."""
+        import os
+        from sqlalchemy import text
+        import pandas as pd
+
+        if self.is_mocked():
+            logger.info(f"Connection is mocked. Simulating writing {len(df)} rows.")
+            return len(df)
+
+        if self.connection.is_file:
+            # Resolve file path
+            folder_path = self.connection.host
+            if folder_path and os.path.exists(folder_path):
+                if table:
+                    file_path = os.path.join(folder_path, table)
+                else:
+                    # use connection type suffix
+                    suffix = '.' + self.connection.connection_type
+                    file_path = os.path.join(folder_path, f"output{suffix}")
+            elif self.connection.file:
+                file_path = self.connection.file.path
+            else:
+                # Fallback to a temporary or default path in workspace
+                file_path = f"./{table or 'output.csv'}"
+
+            # Write file based on extension
+            is_csv = file_path.lower().endswith('.csv') or self.connection.connection_type == 'csv'
+            is_parquet = file_path.lower().endswith(('.parquet', '.parq', '.pq')) or self.connection.connection_type == 'parquet'
+            is_excel = file_path.lower().endswith(('.xlsx', '.xls')) or self.connection.connection_type == 'excel'
+            is_text = file_path.lower().endswith('.txt') or self.connection.connection_type == 'text'
+
+            # If mode is append, try reading existing file first
+            if mode == 'append' and os.path.exists(file_path):
+                try:
+                    if is_csv or is_text:
+                        existing_df = pd.read_csv(file_path)
+                    elif is_parquet:
+                        existing_df = pd.read_parquet(file_path)
+                    elif is_excel:
+                        existing_df = pd.read_excel(file_path)
+                    else:
+                        existing_df = pd.read_csv(file_path)
+                    df = pd.concat([existing_df, df], ignore_index=True)
+                except Exception as e:
+                    logger.warning(f"Could not read existing file for append: {e}")
+
+            # Write dataframe
+            if is_csv:
+                df.to_csv(file_path, index=False)
+            elif is_parquet:
+                df.to_parquet(file_path, index=False)
+            elif is_excel:
+                df.to_excel(file_path, index=False)
+            elif is_text:
+                df.to_csv(file_path, index=False, sep='\t')
+            else:
+                df.to_csv(file_path, index=False)
+            return len(df)
+
+        else:
+            # Database load
+            engine = self.get_engine()
+            full_table = self._build_full_table_name(table, schema=schema, catalog=catalog)
+            if mode == 'replace':
+                # Run truncate/delete
+                try:
+                    with engine.begin() as conn:
+                        conn.execute(text(f"DELETE FROM {full_table}"))
+                except Exception as e:
+                    logger.warning(f"Failed to delete target using DELETE FROM: {e}. Trying TRUNCATE.")
+                    try:
+                        with engine.begin() as conn:
+                            conn.execute(text(f"TRUNCATE TABLE {full_table}"))
+                    except Exception as ex:
+                        raise ValueError(f"Failed to clear target table: {ex}")
+
+            # Write to database using pandas to_sql
+            schema_name = schema if schema and schema != 'file' else None
+            df.to_sql(name=table, con=engine, schema=schema_name, if_exists='append', index=False)
+            return len(df) 
  

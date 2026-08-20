@@ -56,6 +56,23 @@ class Mapping(models.Model):
     target_date_range_operator_start = models.CharField(max_length=5, default='>=')
     target_date_range_operator_end = models.CharField(max_length=5, default='<=')
 
+    # ETL Configuration
+    query_type = models.CharField(
+        max_length=20,
+        choices=[('table', 'Table Select'), ('custom_query', 'Custom Query')],
+        default='table'
+    )
+    custom_query = models.TextField(blank=True, null=True)
+    filter_column = models.CharField(max_length=200, blank=True, null=True)
+    filter_condition = models.CharField(max_length=500, blank=True, null=True)
+    load_mode = models.CharField(
+        max_length=20,
+        choices=[('truncate', 'Truncate Load'), ('incremental', 'Incremental Load')],
+        default='truncate'
+    )
+    incremental_column = models.CharField(max_length=200, blank=True, null=True)
+    incremental_value = models.CharField(max_length=200, blank=True, null=True)
+
     # Metadata
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mappings')
     created_at = models.DateTimeField(auto_now_add=True)

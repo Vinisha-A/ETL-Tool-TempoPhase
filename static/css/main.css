@@ -9,33 +9,33 @@
 
 /* ─── CSS Custom Properties (Design Tokens) ──────────────────────────────── */
 :root {
-    /* HDFC Brand Colors */
-    --primary: #004C8F;
-    --primary-dark: #003366;
-    --primary-light: #E8F0FE;
-    --primary-medium: #3D7ABF;
-    --primary-subtle: #F0F5FC;
+    /* Refined HDFC Brand Colors for ETL platform */
+    --primary: #0B2545;          /* Deep Slate Navy (dominant brand blue) */
+    --primary-dark: #00152B;     /* Midnight Navy */
+    --primary-light: #EEF4F8;    /* Soft Navy Blue tint */
+    --primary-medium: #134074;   /* Corporate Blue */
+    --primary-subtle: #F4F7FA;   /* Subtle background blue tint */
     
-    --accent: #ED232A;
-    --accent-dark: #C41920;
-    --accent-light: #FDE8E8;
+    --accent: #E53E3E;           /* Vibrant HDFC Red accent */
+    --accent-dark: #C53030;
+    --accent-light: #FED7D7;
     --accent-subtle: #FFF5F5;
     
     /* Neutral Palette */
-    --bg-body: #F4F7FB;
+    --bg-body: #F8FAFC;          /* Clean light grey */
     --bg-card: #FFFFFF;
-    --bg-sidebar: #FAFCFF;
-    --bg-hover: #EDF2FA;
-    --bg-input: #F8FAFD;
+    --bg-sidebar: #0B2545;       /* Match primary dark navy for premium sidebar */
+    --bg-hover: #134074;
+    --bg-input: #FFFFFF;
     
-    --text-primary: #1A2B42;
-    --text-secondary: #5A6B80;
-    --text-muted: #8899AA;
+    --text-primary: #0F172A;     /* Dark slate text */
+    --text-secondary: #475569;   /* Medium slate text */
+    --text-muted: #94A3B8;       /* Slate muted text */
     --text-inverse: #FFFFFF;
     
     --border-light: #E2E8F0;
     --border-medium: #CBD5E1;
-    --border-focus: #004C8F;
+    --border-focus: #134074;
     
     /* Status Colors */
     --success: #10B981;
@@ -51,12 +51,12 @@
     --info-light: #EFF6FF;
     
     /* Shadows */
-    --shadow-xs: 0 1px 2px rgba(0, 76, 143, 0.04);
-    --shadow-sm: 0 1px 3px rgba(0, 76, 143, 0.06), 0 1px 2px rgba(0, 76, 143, 0.04);
-    --shadow-md: 0 4px 6px -1px rgba(0, 76, 143, 0.06), 0 2px 4px -1px rgba(0, 76, 143, 0.04);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 76, 143, 0.08), 0 4px 6px -2px rgba(0, 76, 143, 0.04);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 76, 143, 0.08), 0 10px 10px -5px rgba(0, 76, 143, 0.03);
-    --shadow-card: 0 2px 8px rgba(0, 76, 143, 0.06);
+    --shadow-xs: 0 1px 2px rgba(11, 37, 69, 0.03);
+    --shadow-sm: 0 1px 3px rgba(11, 37, 69, 0.05);
+    --shadow-md: 0 4px 12px rgba(11, 37, 69, 0.06);
+    --shadow-lg: 0 10px 24px rgba(11, 37, 69, 0.08);
+    --shadow-xl: 0 20px 32px rgba(11, 37, 69, 0.10);
+    --shadow-card: 0 2px 12px rgba(11, 37, 69, 0.04);
     
     /* Spacing */
     --sidebar-width: 260px;
@@ -130,7 +130,7 @@ img {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    background: radial-gradient(circle at top right, #134074 0%, #0B2545 100%);
     position: relative;
     overflow: hidden;
 }
@@ -518,8 +518,8 @@ img {
 /* ─── Sidebar ─────────────────────────────────────────────────────────────── */
 .sidebar {
     width: var(--sidebar-width);
-    background: var(--bg-card);
-    border-right: 1px solid var(--border-light);
+    background: var(--bg-sidebar);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
     position: fixed;
@@ -536,7 +536,7 @@ img {
     display: flex;
     align-items: center;
     gap: 14px;
-    border-bottom: 1px solid var(--border-light);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     min-height: var(--header-height);
 }
 
@@ -553,7 +553,7 @@ img {
 .sidebar-header .brand-name {
     font-size: var(--font-size-md);
     font-weight: 700;
-    color: var(--primary);
+    color: var(--text-inverse);
     line-height: 1.2;
 }
 
@@ -577,7 +577,7 @@ img {
     padding: 8px 16px 6px;
     font-size: var(--font-size-xs);
     font-weight: 700;
-    color: var(--text-muted);
+    color: #475569;
     text-transform: uppercase;
     letter-spacing: 0.08em;
 }
@@ -589,7 +589,7 @@ img {
     padding: 10px 16px;
     margin: 2px 0;
     border-radius: var(--radius-md);
-    color: var(--text-secondary);
+    color: #94A3B8;
     font-size: var(--font-size-base);
     font-weight: 500;
     transition: all var(--transition-fast);
@@ -598,18 +598,20 @@ img {
 }
 
 .nav-item:hover {
-    background: var(--bg-hover);
-    color: var(--primary);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-inverse);
 }
 
 .nav-item.active {
-    background: var(--primary-light);
-    color: var(--primary);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-inverse);
     font-weight: 600;
+    border-left: 4px solid var(--accent);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 
 .nav-item.active .nav-icon {
-    color: var(--primary);
+    color: var(--text-inverse);
 }
 
 .nav-item .nav-icon {
@@ -636,7 +638,7 @@ img {
 
 .sidebar-footer {
     padding: 16px 12px;
-    border-top: 1px solid var(--border-light);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .sidebar-user {
@@ -669,7 +671,7 @@ img {
 .sidebar-user .user-name {
     font-size: var(--font-size-sm);
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-inverse);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

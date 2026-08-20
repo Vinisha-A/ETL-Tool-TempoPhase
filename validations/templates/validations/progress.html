@@ -9,7 +9,7 @@
         <div style="font-size: 48px; color: var(--primary); margin-bottom: 16px;">
             <i class="fas fa-cog fa-spin"></i>
         </div>
-        <h2 style="margin-bottom: 8px;">Validation Running</h2>
+        <h2 style="margin-bottom: 8px;">ETL Pipeline Running</h2>
         <p class="text-muted mb-24">{{ run.mapping.name }}</p>
 
         <div class="progress-container">
@@ -24,16 +24,16 @@
 
         <div class="d-flex justify-center gap-24 mt-24">
             <div>
-                <div class="fw-700 text-success" id="passed-checks-{{ run.id }}" style="font-size: 1.5rem;">{{ run.passed_checks }}</div>
-                <div class="text-muted" style="font-size: 0.8rem;">Match</div>
+                <div class="fw-700 text-success" id="passed-checks-{{ run.id }}" style="font-size: 1.5rem;">{{ run.records_extracted }}</div>
+                <div class="text-muted" style="font-size: 0.8rem;">Extracted</div>
             </div>
             <div>
-                <div class="fw-700 text-danger" id="failed-checks-{{ run.id }}" style="font-size: 1.5rem;">{{ run.failed_checks }}</div>
-                <div class="text-muted" style="font-size: 0.8rem;">Mismatch</div>
+                <div class="fw-700 text-primary" id="failed-checks-{{ run.id }}" style="font-size: 1.5rem;">{{ run.records_loaded }}</div>
+                <div class="text-muted" style="font-size: 0.8rem;">Loaded</div>
             </div>
             <div>
                 <div class="fw-700" id="total-checks-{{ run.id }}" style="font-size: 1.5rem;">{{ run.total_checks }}</div>
-                <div class="text-muted" style="font-size: 0.8rem;">Total</div>
+                <div class="text-muted" style="font-size: 0.8rem;">Total Steps</div>
             </div>
         </div>
 

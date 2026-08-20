@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard | QualiX{% endblock %}
+{% block title %}Dashboard | DataBridge{% endblock %}
 
 {% block page_title %}Dashboard{% endblock %}
 
@@ -44,14 +44,14 @@
     </div>
 </div>
 
-<!-- Quick Validation Workspace -->
+<!-- Quick ETL Workspace -->
 {% if user_profile.role != 'auditor' %}
 <div class="card mb-24">
     <div class="card-header">
-        <h2><i class="fas fa-bolt" style="color: var(--accent); margin-right: 8px;"></i> Quick Validation Workspace</h2>
+        <h2><i class="fas fa-bolt" style="color: var(--accent); margin-right: 8px;"></i> Quick ETL Workspace</h2>
     </div>
     <div class="card-body">
-        <p class="text-muted mb-20">Directly validate data quality between source and target tables in real-time.</p>
+        <p class="text-muted mb-20">Directly transfer and load data from source to target tables in real-time.</p>
         <form method="post" action="{% url 'validations:quick' %}" id="quick-validation-form">
             {% csrf_token %}
 
@@ -242,7 +242,7 @@
                                         <th style="width: 35%; font-weight: 600; font-size: 0.85rem; padding: 10px 12px; border: none;">Source Column</th>
                                         <th style="width: 5%; padding: 10px 12px; border: none;"></th>
                                         <th style="width: 35%; font-weight: 600; font-size: 0.85rem; padding: 10px 12px; border: none;">Target Column</th>
-                                        <th style="width: 20%; font-weight: 600; font-size: 0.85rem; padding: 10px 12px; border: none;">Validation Operations</th>
+                                        <th style="width: 20%; font-weight: 600; font-size: 0.85rem; padding: 10px 12px; border: none;">ETL Options</th>
                                         <th style="width: 5%; padding: 10px 12px; text-align: center; border: none;">Actions</th>
                                     </tr>
                                 </thead>
@@ -444,13 +444,33 @@
                 </div>
             </div>
 
+            <!-- Target Load Configuration Section -->
+            <div class="card mb-24" style="box-shadow: none; border: 1.5px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-lg);">
+                <div class="card-header" style="background: var(--primary-subtle); border-bottom: 1.5px solid var(--border-light); padding: 16px 20px;">
+                    <h3 style="font-size: 1.1rem; color: var(--primary); font-weight: 600; margin: 0;">
+                        <i class="fas fa-cloud-upload-alt"></i> Target Load Configuration
+                    </h3>
+                </div>
+                <div class="card-body" style="padding: 20px;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Load Mode *</label>
+                            <select name="load_mode" id="load-mode" class="form-control" required>
+                                <option value="truncate" selected>Truncate Load (Clear target first)</option>
+                                <option value="incremental">Incremental Load (Append new rows)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Submit -->
             <div style="display: flex; gap: 12px; margin-top: 16px;">
                 <button type="button" class="btn btn-secondary btn-lg" onclick="saveFormDraft('quick-validation-form', 'quick_validate')" style="flex: 1; background: #fff; border: 1px solid #CBD5E1; color: #1E293B; border-radius: var(--radius-lg); font-size: 1.1rem; padding: 14px;">
                     <i class="fas fa-file-signature"></i> Save Draft
                 </button>
                 <button type="submit" class="btn btn-primary btn-lg" style="flex: 2; border-radius: var(--radius-lg); font-size: 1.1rem; padding: 14px;" onclick="return validateQuickForm()">
-                    <i class="fas fa-play"></i> Execute Quick Validation
+                    <i class="fas fa-play"></i> Execute Quick ETL Load
                 </button>
             </div>
         </form>
@@ -462,7 +482,7 @@
     <!-- Recent Monitoring -->
     <div class="card">
         <div class="card-header">
-            <h2>Recent Monitor Runs</h2>
+            <h2>Recent ETL Runs</h2>
             <a href="{% url 'validations:list' %}" class="btn btn-sm btn-secondary">View All</a>
         </div>
         <div class="card-body p-0">
@@ -472,7 +492,7 @@
                         <tr>
                             <th>Pipeline</th>
                             <th>Status</th>
-                            <th>Match/Mismatch</th>
+                            <th>Extracted/Loaded</th>
                             <th>Date</th>
                             <th>Actions</th>
                         </tr>
@@ -491,8 +511,8 @@
                                 </span>
                             </td>
                             <td>
-                                <span class="text-success fw-600">{{ run.passed_checks }}</span> /
-                                <span class="text-danger fw-600">{{ run.failed_checks }}</span>
+                                <span class="text-success fw-600">{{ run.records_extracted }}</span> /
+                                <span class="text-primary fw-600">{{ run.records_loaded }}</span>
                             </td>
                             <td class="text-muted">{{ run.created_at|date:"d M H:i" }}</td>
                             <td>
@@ -501,7 +521,7 @@
                                         <i class="fas fa-file-alt"></i> Report
                                     </a>
                                     {% if user_profile.role != 'auditor' %}
-                                    <form method="post" action="{% url 'validations:delete' run.id %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete Validation Run {{ run.id }}?');">
+                                    <form method="post" action="{% url 'validations:delete' run.id %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete ETL Run {{ run.id }}?');">
                                         {% csrf_token %}
                                         <button type="submit" class="btn btn-xs btn-danger" style="background-color: var(--danger); border-color: var(--danger); color: white; border-radius: var(--radius-sm); padding: 4px 8px; font-size: 0.75rem; cursor: pointer;">
                                             <i class="fas fa-trash"></i> Delete
@@ -514,7 +534,7 @@
                         {% empty %}
                         <tr>
                             <td colspan="5" class="text-center text-muted p-24">
-                                No monitor runs yet. <a href="{% url 'mappings:create' %}">Create a pipeline</a> to get started.
+                                No ETL runs yet. <a href="{% url 'mappings:create' %}">Create a pipeline</a> to get started.
                             </td>
                         </tr>
                         {% endfor %}
@@ -638,46 +658,6 @@ function validateQuickForm() {
         return false;
     }
 
-    const hasAll = mappings.some(m => m.source_column === '__all__');
-    if (!hasAll) {
-        const totalOps = mappings.reduce((sum, m) => sum + (m.operations || []).length, 0);
-        if (totalOps === 0) {
-            showToast('Please select at least one validation operation to run', 'warning');
-            return false;
-        }
-    }
-
-    // Prompt for parameter-based operations
-    let parameters = {};
-    const needsParamOps = ['pattern_match'];
-    for (const mapping of mappings) {
-        if (mapping.source_column === '__all__') {
-            const selectedOps = mapping.operations || [];
-            for (const op of selectedOps) {
-                if (needsParamOps.includes(op)) {
-                    let friendlyOp = op.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-                    let val = prompt(`You selected '${friendlyOp}' for All Columns. Please enter the input parameter value:`);
-                    if (val === null) {
-                        showToast('Validation run cancelled.', 'warning');
-                        return false;
-                    }
-                    parameters[`__all__:${op}`] = val;
-                }
-            }
-        } else {
-            for (const op of (mapping.operations || [])) {
-                if (needsParamOps.includes(op)) {
-                    let friendlyOp = op.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-                    let val = prompt(`Please enter parameter value for column "${mapping.source_column}" (${friendlyOp}):`);
-                    if (val === null) {
-                        showToast('Validation run cancelled.', 'warning');
-                        return false;
-                    }
-                    parameters[`${mapping.source_column}:${op}`] = val;
-                }
-            }
-        }
-    }
     return true;
 }
 </script>

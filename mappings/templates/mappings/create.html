@@ -36,6 +36,31 @@
         </div>
     </div>
 
+    <!-- Extraction Configuration -->
+    <div class="card mb-24">
+        <div class="card-header">
+            <h2><i class="fas fa-filter" style="color: var(--primary); margin-right: 8px;"></i> Extraction Configuration</h2>
+        </div>
+        <div class="card-body">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Query Type *</label>
+                    <select name="query_type" id="query-type" class="form-control" onchange="toggleQueryType()" required>
+                        <option value="table" selected>Table Select (Browse & Map)</option>
+                        <option value="custom_query">Custom SQL Query</option>
+                    </select>
+                </div>
+            </div>
+            <div id="custom-query-section" style="display: none; margin-top: 16px;">
+                <div class="form-group mb-0">
+                    <label>Custom SQL Query *</label>
+                    <textarea name="custom_query" id="custom-query" class="form-control" rows="6" placeholder="SELECT * FROM source_table WHERE ..."></textarea>
+                    <span class="text-muted" style="font-size: 0.8rem; margin-top: 6px; display: block;">This query will execute directly against the source database connection.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Source & Target Panel -->
     <div class="mapping-panel mb-24">
         <!-- Source Panel -->
@@ -77,6 +102,19 @@
                     </div>
                 </div>
 
+                <!-- Custom Filter Section -->
+                <div id="table-filter-section" style="margin-top: 16px; display: block;" class="form-row">
+                    <div class="form-group">
+                        <label>Filter Column (Optional)</label>
+                        <select name="filter_column" id="filter-column" class="form-control">
+                            <option value="">-- None --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Filter Condition / Value</label>
+                        <input type="text" name="filter_condition" id="filter-condition" class="form-control" placeholder="e.g. > 100 or = 'Active'">
+                    </div>
+                </div>
 
             </div>
         </div>
@@ -228,16 +266,36 @@
         </div>
     </div>
 
-    <!-- Central Validation Operations Section -->
-    <div id="validation-operations-section" class="card mb-24" style="display: none; box-shadow: none; border: 1.5px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-lg);">
+    <!-- Target Load Configuration Section -->
+    <div class="card mb-24" style="box-shadow: none; border: 1.5px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-lg);">
         <div class="card-header" style="background: var(--primary-subtle); border-bottom: 1.5px solid var(--border-light); padding: 16px 20px;">
             <h3 style="font-size: 1.1rem; color: var(--primary); font-weight: 600; margin: 0;">
-                <i class="fas fa-tasks"></i> Validation Rules Configuration
+                <i class="fas fa-cloud-upload-alt"></i> Target Load Configuration
             </h3>
         </div>
         <div class="card-body" style="padding: 20px;">
-            <div id="validation-operations-container">
-                <div class="alert alert-info" style="padding: 10px 14px; font-size: 0.85rem; margin-bottom: 0;">Please select source columns to configure validations.</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Load Mode *</label>
+                    <select name="load_mode" id="load-mode" class="form-control" onchange="toggleLoadMode()" required>
+                        <option value="truncate" selected>Truncate Load (Clear target first)</option>
+                        <option value="incremental">Incremental Load (Append new rows)</option>
+                    </select>
+                </div>
+            </div>
+            <div id="incremental-section" style="display: none; margin-top: 16px;" class="form-row">
+                <div class="form-group">
+                    <label>Incremental Column *</label>
+                    <select name="incremental_column" id="incremental-column" class="form-control">
+                        <option value="">-- Select Incremental Column --</option>
+                    </select>
+                    <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Column used to detect new records (e.g. ID, date, timestamp).</span>
+                </div>
+                <div class="form-group">
+                    <label>Starting Incremental Value (Optional)</label>
+                    <input type="text" name="incremental_value" id="incremental-value" class="form-control" placeholder="e.g. 2026-08-19 or 1000">
+                    <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Leave blank to automatically derive from the target table's maximum value.</span>
+                </div>
             </div>
         </div>
     </div>
@@ -438,9 +496,96 @@ document.addEventListener('DOMContentLoaded', function() {
     setupFormDraftManager('mapping-form', 'mapping_create', {
         onRestore: restoreMappingDraft
     });
+    
+    toggleQueryType();
+    toggleLoadMode();
+
+    // Bind change listener on source table to load incremental and filter column selectors
+    const sourceTable = document.getElementById('source-table');
+    if (sourceTable) {
+        sourceTable.addEventListener('change', function() {
+            const connId = document.getElementById('source-connection').value;
+            const schema = document.getElementById('source-schema').value;
+            const catalog = document.getElementById('source-catalog') ? document.getElementById('source-catalog').value : '';
+            const table = this.value;
+            if (!connId || !table) return;
+
+            let url = `/connections/api/columns/?connection_id=${connId}&schema=${encodeURIComponent(schema)}&table=${encodeURIComponent(table)}`;
+            if (catalog) url += `&catalog=${encodeURIComponent(catalog)}`;
+
+            fetch(url)
+                .then(r => r.json())
+                .then(data => {
+                    const filterSelect = document.getElementById('filter-column');
+                    const incSelect = document.getElementById('incremental-column');
+                    if (filterSelect) {
+                        filterSelect.innerHTML = '<option value="">-- None --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            filterSelect.appendChild(opt);
+                        });
+                    }
+                    if (incSelect) {
+                        incSelect.innerHTML = '<option value="">-- Select Incremental Column --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            incSelect.appendChild(opt);
+                        });
+                    }
+                });
+        });
+    }
 });
 
+function toggleQueryType() {
+    const type = document.getElementById('query-type').value;
+    const customSection = document.getElementById('custom-query-section');
+    const columnSection = document.getElementById('column-selection-section');
+    const tableFilterSection = document.getElementById('table-filter-section');
+
+    if (type === 'custom_query') {
+        customSection.style.display = 'block';
+        if (columnSection) columnSection.style.display = 'none';
+        if (tableFilterSection) tableFilterSection.style.display = 'none';
+        document.getElementById('source-table').required = false;
+        document.getElementById('custom-query').required = true;
+    } else {
+        customSection.style.display = 'none';
+        if (columnSection) columnSection.style.display = 'block';
+        if (tableFilterSection) tableFilterSection.style.display = 'block';
+        document.getElementById('source-table').required = true;
+        document.getElementById('custom-query').required = false;
+    }
+}
+
+function toggleLoadMode() {
+    const mode = document.getElementById('load-mode').value;
+    const incSection = document.getElementById('incremental-section');
+    if (mode === 'incremental') {
+        incSection.style.display = 'flex';
+        document.getElementById('incremental-column').required = true;
+    } else {
+        incSection.style.display = 'none';
+        document.getElementById('incremental-column').required = false;
+    }
+}
+
 function prepareSubmit() {
+    const queryType = document.getElementById('query-type').value;
+    if (queryType === 'custom_query') {
+        const query = document.getElementById('custom-query').value.trim();
+        if (!query) {
+            showToast('Please enter a custom SQL query', 'warning');
+            return false;
+        }
+        document.getElementById('column-mappings-json').value = '[]';
+        return true;
+    }
+
     if (typeof validateDateFilters === 'function') {
         if (!validateDateFilters()) {
             return false;
@@ -469,7 +614,6 @@ function prepareSubmit() {
             return false;
         }
     }
-    // 'all' mode — no individual column check needed
 
     const jsonStr = getColumnMappingsJSON();
     document.getElementById('column-mappings-json').value = jsonStr;
@@ -478,15 +622,6 @@ function prepareSubmit() {
     if (mappings.length === 0) {
         showToast('Please select at least one column pairing', 'warning');
         return false;
-    }
-
-    const hasAll = mappings.some(m => m.source_column === '__all__');
-    if (!hasAll) {
-        const totalOps = mappings.reduce((sum, m) => sum + (m.operations || []).length, 0);
-        if (totalOps === 0) {
-            showToast('Please select at least one validation operation to run', 'warning');
-            return false;
-        }
     }
 
     return true;

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Report — Run #{{ run.rev_index|default:run.monitor_run_number }}{% endblock %}
-{% block page_title %}Validation Report{% endblock %}
+{% block page_title %}ETL Run Report{% endblock %}
 
 {% block content %}
 <!-- Summary -->
@@ -24,19 +24,19 @@
         <div class="report-summary mb-24">
             <div class="report-metric">
                 <div class="metric-value">{{ run.total_checks }}</div>
-                <div class="metric-label">Total Checks</div>
+                <div class="metric-label">Total Steps</div>
             </div>
             <div class="report-metric pass">
-                <div class="metric-value">{{ run.passed_checks }}</div>
-                <div class="metric-label">Match</div>
+                <div class="metric-value">{{ run.records_extracted }}</div>
+                <div class="metric-label">Records Extracted</div>
             </div>
-            <div class="report-metric fail">
-                <div class="metric-value">{{ run.failed_checks }}</div>
-                <div class="metric-label">Mismatch</div>
+            <div class="report-metric pass">
+                <div class="metric-value">{{ run.records_loaded }}</div>
+                <div class="metric-label">Records Loaded</div>
             </div>
-            <div class="report-metric {% if run.pass_rate >= 90 %}pass{% elif run.pass_rate >= 70 %}{% else %}fail{% endif %}">
-                <div class="metric-value">{{ run.pass_rate }}%</div>
-                <div class="metric-label">Match Rate</div>
+            <div class="report-metric pass">
+                <div class="metric-value" style="font-size: 1.1rem; line-height: 2.2rem;">{{ run.mapping.get_load_mode_display }}</div>
+                <div class="metric-label">Load Mode</div>
             </div>
         </div>
 
@@ -116,41 +116,54 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Table Name</th>
-                        <th>Column Name</th>
-                        <th>Source Validation Operation(operation choosen)</th>
-                        <th>Target Validation Operation (operation choosen)</th>
+                        <th>Pipeline Component</th>
+                        <th>Step Details</th>
+                        <th>Source Metric</th>
+                        <th>Target Metric / Status</th>
                         <th>Result</th>
-                        <th>Difference</th>
+                        <th>Notes / Errors</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for result in results %}
                     <tr>
-                        <td class="fw-500">{{ run.mapping.source_table.upper }}</td>
                         <td class="fw-500">
                             {% if result.source_column %}
                                 {{ result.source_column }}
-                            {% elif result.column_mapping %}
-                                {{ result.column_mapping.source_column }}
                             {% else %}
                                 Unknown
                             {% endif %}
                         </td>
+                        <td class="fw-500">{{ result.target_column }}</td>
                         <td><strong class="text-primary">{{ result.source_op_display }}</strong></td>
                         <td><strong class="text-primary">{{ result.target_op_display }}</strong></td>
                         <td>
                             {% if result.is_match %}
-                                <span class="badge badge-success">MATCH</span>
+                                <span class="badge badge-success">SUCCESS</span>
                             {% else %}
-                                <span class="badge badge-danger">MISMATCH</span>
+                                <span class="badge badge-danger">FAILED</span>
                             {% endif %}
                         </td>
-                        <td class="text-muted">{{ result.difference }}</td>
+                        <td class="text-muted">
+                            {% if result.is_match %}
+                                {% if result.operation == 'extraction' %}
+                                    Extracted from {% if run.mapping.query_type == 'custom_query' %}Custom Query{% else %}{{ run.mapping.source_table }}{% endif %}
+                                {% elif result.operation == 'target_preparation' %}
+                                    Prepared target table {{ run.mapping.target_table }}
+                                {% elif result.operation == 'loading' %}
+                                    Loaded into {{ run.mapping.target_table }}
+                                
+                                {% else %}
+                                    Completed successfully
+                                {% endif %}
+                            {% else %}
+                                {{ result.difference }}
+                            {% endif %}
+                        </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="7" class="text-center text-muted p-24">No results available.</td>
+                        <td colspan="6" class="text-center text-muted p-24">No results available.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
