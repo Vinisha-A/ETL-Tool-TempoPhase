@@ -3,8 +3,8 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
 
 from connections.models import DataConnection
-from mappings.models import Mapping, ValidationRule
-from validations.models import ValidationRun, ValidationResult
+from mappings.models import Mapping, ETLStep
+from validations.models import ETLRun, ETLResult
 from workflows.models import Workflow
 from logs.models import AuditLog
 from django.shortcuts import get_object_or_404
@@ -21,18 +21,18 @@ def dashboard_view(request):
     active_workflows = Workflow.objects.filter(is_active=True).count()
 
     # Recent validation runs
-    recent_runs = ValidationRun.objects.select_related('mapping', 'triggered_by').all()[:10]
+    recent_runs = ETLRun.objects.select_related('mapping', 'triggered_by').all()[:10]
 
     # Overall completed vs failed workflow/validation runs
-    workflows_completed = ValidationRun.objects.filter(status='completed').count()
-    workflows_failed = ValidationRun.objects.filter(status='failed').count()
+    workflows_completed = ETLRun.objects.filter(status='completed').count()
+    workflows_failed = ETLRun.objects.filter(status='failed').count()
 
     # Recent logs
     recent_logs = AuditLog.objects.select_related('user').all()[:10]
 
     # Connections list for quick access and dropdowns
     connections = DataConnection.objects.filter(is_active=True)
-    operations = ValidationRule.OPERATION_CHOICES
+    operations = ETLStep.OPERATION_CHOICES
 
     context = {
         'total_connections': total_connections,

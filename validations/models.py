@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from mappings.models import Mapping, ColumnMapping
 
 
-class ValidationRun(models.Model):
+class ETLRun(models.Model):
     """A single execution of validation against a mapping."""
 
     STATUS_CHOICES = [
@@ -18,8 +18,8 @@ class ValidationRun(models.Model):
         ('scheduled', 'Scheduled'),
     ]
 
-    mapping = models.ForeignKey(Mapping, on_delete=models.CASCADE, related_name='validation_runs')
-    workflow = models.ForeignKey('workflows.Workflow', on_delete=models.SET_NULL, null=True, blank=True, related_name='validation_runs')
+    mapping = models.ForeignKey(Mapping, on_delete=models.CASCADE, related_name='etl_runs')
+    workflow = models.ForeignKey('workflows.Workflow', on_delete=models.SET_NULL, null=True, blank=True, related_name='etl_runs')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     triggered_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     trigger_type = models.CharField(max_length=20, choices=TRIGGER_CHOICES, default='manual')
@@ -93,10 +93,10 @@ class ValidationRun(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        verbose_name = 'Validation Run'
+        verbose_name = 'ETL Run'
 
     def __str__(self):
-        return f"Run {self.id} - {self.mapping.name} ({self.status})"
+        return f"ETL Run {self.id} - {self.mapping.name} ({self.status})"
 
     @property
     def pass_rate(self):
@@ -109,15 +109,15 @@ class ValidationRun(models.Model):
         """Dynamic monitor run sequence number matching Monitor list view."""
         if hasattr(self, 'rev_index') and self.rev_index is not None:
             return self.rev_index
-        total_count = ValidationRun.objects.count()
-        runs_after = ValidationRun.objects.filter(id__gt=self.id).count()
+        total_count = ETLRun.objects.count()
+        runs_after = ETLRun.objects.filter(id__gt=self.id).count()
         return total_count - runs_after
 
 
-class ValidationResult(models.Model):
+class ETLResult(models.Model):
     """Individual result for each column-operation check in a validation run."""
 
-    run = models.ForeignKey(ValidationRun, on_delete=models.CASCADE, related_name='results')
+    run = models.ForeignKey(ETLRun, on_delete=models.CASCADE, related_name='results')
     column_mapping = models.ForeignKey(ColumnMapping, on_delete=models.SET_NULL, null=True, blank=True)
     source_column = models.CharField(max_length=255, blank=True, null=True)
     target_column = models.CharField(max_length=255, blank=True, null=True)

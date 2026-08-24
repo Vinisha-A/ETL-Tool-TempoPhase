@@ -9,7 +9,7 @@
         <h2><i class="fas fa-project-diagram" style="color: var(--primary); margin-right: 8px;"></i> {{ mapping.name }}</h2>
         {% if user_profile.role != 'auditor' %}
         <div class="d-flex gap-8">
-            <button class="btn btn-primary btn-sm" onclick="triggerValidation({{ mapping.id }})">
+            <button class="btn btn-primary btn-sm" onclick="triggerETL({{ mapping.id }})">
                 <i class="fas fa-play"></i> Run ETL Job
             </button>
             <a href="{% url 'mappings:edit' mapping.id %}" class="btn btn-outline btn-sm">

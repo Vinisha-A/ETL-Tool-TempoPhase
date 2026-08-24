@@ -6,7 +6,7 @@ from django.utils import timezone
 
 def generate_excel_report(run):
     """
-    Generates an Excel validation report for the given ValidationRun.
+    Generates an Excel validation report for the given ETLRun.
     Returns the absolute file path where the report is saved.
     """
     mapping = run.mapping

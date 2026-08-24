@@ -67,7 +67,7 @@ class Workflow(models.Model):
 class EmailNotification(models.Model):
     """Logs of sent email notifications for validation runs."""
     workflow = models.ForeignKey(Workflow, on_delete=models.SET_NULL, null=True, blank=True, related_name='email_notifications')
-    run = models.ForeignKey('validations.ValidationRun', on_delete=models.SET_NULL, null=True, blank=True, related_name='email_notifications')
+    run = models.ForeignKey('validations.ETLRun', on_delete=models.SET_NULL, null=True, blank=True, related_name='email_notifications')
     recipient_email = models.EmailField()
     subject = models.CharField(max_length=255)
     email_body = models.TextField()

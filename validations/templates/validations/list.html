@@ -100,7 +100,7 @@
                                 </a>
                                 {% endif %}
                                 {% if user_profile.role != 'auditor' %}
-                                <form method="post" action="{% url 'validations:delete' run.id %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete Validation Run {{ run.id }}?');">
+                                <form method="post" action="{% url 'validations:delete' run.id %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete ETL Run {{ run.id }}?');">
                                     {% csrf_token %}
                                     <button type="submit" class="btn btn-sm btn-danger" style="background-color: var(--danger); border-color: var(--danger); color: white; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
                                         <i class="fas fa-trash"></i> Delete
@@ -116,7 +116,7 @@
                             <div class="empty-state">
                                 <div class="empty-icon"><i class="fas fa-check-double"></i></div>
                                 <h3>{% if query %}No Results Found{% else %}No Monitor Runs Yet{% endif %}</h3>
-                                <p>{% if query %}No pipelines matching "{{ query }}" have validation runs.{% else %}Create a pipeline and trigger a monitor run to see results here.{% endif %}</p>
+                                <p>{% if query %}No pipelines matching "{{ query }}" have ETL runs.{% else %}Create a pipeline and trigger a monitor run to see results here.{% endif %}</p>
                             </div>
                         </td>
                     </tr>

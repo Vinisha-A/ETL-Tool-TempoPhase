@@ -6,15 +6,15 @@ from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST
 
-from .models import ValidationRun, ValidationResult
-from mappings.models import Mapping, ColumnMapping, ValidationRule
+from .models import ETLRun, ETLResult
+from mappings.models import Mapping, ColumnMapping, ETLStep
 from accounts.decorators import contributor_or_admin_required
 
 logger = logging.getLogger('validations')
 
 
 @login_required
-def validation_list_view(request):
+def etl_list_view(request):
     """List all validation runs."""
     from django.core.paginator import Paginator
 
@@ -23,7 +23,7 @@ def validation_list_view(request):
     type_filter = request.GET.get('type', '').strip()
     date_filter = request.GET.get('date', '').strip()
 
-    runs_qs = ValidationRun.objects.select_related('mapping', 'triggered_by').all()
+    runs_qs = ETLRun.objects.select_related('mapping', 'triggered_by').all()
     if query:
         runs_qs = runs_qs.filter(mapping__name__icontains=query)
     if status_filter:
@@ -54,15 +54,15 @@ def validation_list_view(request):
 
 
 @login_required
-def validation_report_view(request, run_id):
+def etl_report_view(request, run_id):
     """View detailed report for a validation run."""
     run = get_object_or_404(
-        ValidationRun.objects.select_related('mapping', 'triggered_by'),
+        ETLRun.objects.select_related('mapping', 'triggered_by'),
         id=run_id
     )
     # Calculate dynamic monitor run number matching Monitor list view
-    total_count = ValidationRun.objects.count()
-    runs_after = ValidationRun.objects.filter(id__gt=run.id).count()
+    total_count = ETLRun.objects.count()
+    runs_after = ETLRun.objects.filter(id__gt=run.id).count()
     run.rev_index = total_count - runs_after
 
     results = run.results.select_related('column_mapping').all()
@@ -73,9 +73,9 @@ def validation_report_view(request, run_id):
 
 
 @login_required
-def validation_progress_view(request, run_id):
+def etl_progress_view(request, run_id):
     """View validation progress (for active runs)."""
-    run = get_object_or_404(ValidationRun, id=run_id)
+    run = get_object_or_404(ETLRun, id=run_id)
     if run.status in ('completed', 'failed'):
         return redirect('validations:report', run_id=run.id)
     return render(request, 'validations/progress.html', {'run': run})
@@ -84,9 +84,9 @@ def validation_progress_view(request, run_id):
 # ─── API Endpoints ───────────────────────────────────────────────────────────
 
 @login_required
-def api_validation_progress(request, run_id):
+def api_etl_progress(request, run_id):
     """AJAX: Get validation progress."""
-    run = get_object_or_404(ValidationRun, id=run_id)
+    run = get_object_or_404(ETLRun, id=run_id)
     return JsonResponse({
         'status': run.status,
         'progress': run.progress,
@@ -97,9 +97,184 @@ def api_validation_progress(request, run_id):
 
 
 @login_required
+def api_validate_pipeline(request, mapping_id):
+    """AJAX endpoint that runs pre-execution validation checks on a pipeline (Mapping)."""
+    mapping = get_object_or_404(Mapping, id=mapping_id)
+    validations = []
+    has_critical_error = False
+
+    from connections.connector import ConnectorEngine
+    source_engine = ConnectorEngine(mapping.source_connection)
+    target_engine = ConnectorEngine(mapping.target_connection)
+
+    # 1. Source Connection Check
+    try:
+        success, msg = source_engine.test_connection()
+        if success:
+            validations.append({'name': 'Source Connection', 'status': 'success', 'message': 'Connection successful.'})
+        else:
+            validations.append({'name': 'Source Connection', 'status': 'error', 'message': f'Connection failed: {msg}'})
+            has_critical_error = True
+    except Exception as e:
+        validations.append({'name': 'Source Connection', 'status': 'error', 'message': f'Connection error: {str(e)}'})
+        has_critical_error = True
+
+    # 2. Target Connection Check
+    try:
+        success, msg = target_engine.test_connection()
+        if success:
+            validations.append({'name': 'Target Connection', 'status': 'success', 'message': 'Connection successful.'})
+        else:
+            validations.append({'name': 'Target Connection', 'status': 'error', 'message': f'Connection failed: {msg}'})
+            has_critical_error = True
+    except Exception as e:
+        validations.append({'name': 'Target Connection', 'status': 'error', 'message': f'Connection error: {str(e)}'})
+        has_critical_error = True
+
+    source_cols_meta = []
+    target_cols_meta = []
+
+    # 3. Source Table / Custom Query Check
+    if mapping.query_type == 'custom_query':
+        query = mapping.custom_query or ''
+        if not query.strip():
+            validations.append({'name': 'Source Dataset', 'status': 'error', 'message': 'Custom query is empty.'})
+            has_critical_error = True
+        else:
+            # Check read-only SQL safety
+            import re
+            clean_query = re.sub(r'--.*$', '', query, flags=re.MULTILINE)
+            clean_query = re.sub(r'/\*.*?\*/', '', clean_query, flags=re.DOTALL)
+            forbidden_pattern = re.compile(r'\b(insert|update|delete|drop|alter|truncate)\b', re.IGNORECASE)
+            match = forbidden_pattern.search(clean_query)
+            if match:
+                validations.append({'name': 'Source Query Safety', 'status': 'error', 'message': f"Destructive SQL operation detected in custom query: '{match.group(1).upper()}'."})
+                has_critical_error = True
+            else:
+                # Syntax Check: Try to execute query with LIMIT 0
+                try:
+                    if not source_engine.is_mocked():
+                        db_type = str(mapping.source_connection.connection_type).lower()
+                        if db_type == 'oracle':
+                            check_query = f"SELECT * FROM ({query}) WHERE ROWNUM = 0"
+                        elif db_type == 'db2':
+                            check_query = f"SELECT * FROM ({query}) AS temp FETCH FIRST 0 ROWS ONLY"
+                        else:
+                            check_query = f"SELECT * FROM ({query}) LIMIT 0"
+                        source_engine.execute_query(check_query)
+                    validations.append({'name': 'Source SQL Query Syntax', 'status': 'success', 'message': 'Custom SQL query syntax is valid.'})
+                except Exception as sqle:
+                    validations.append({'name': 'Source SQL Query Syntax', 'status': 'error', 'message': f'SQL query validation failed: {str(sqle)}'})
+                    has_critical_error = True
+    else:
+        # Table Select mode
+        if not mapping.source_table:
+            validations.append({'name': 'Source Table', 'status': 'error', 'message': 'Source table is not selected.'})
+            has_critical_error = True
+        else:
+            try:
+                if not source_engine.is_mocked():
+                    tables = source_engine.get_tables(schema=mapping.source_schema or None, catalog=mapping.source_catalog or None)
+                    if mapping.source_table not in tables and mapping.source_table.upper() not in [t.upper() for t in tables]:
+                        validations.append({'name': 'Source Table Existence', 'status': 'error', 'message': f"Table '{mapping.source_table}' was not found in schema/catalog."})
+                        has_critical_error = True
+                    else:
+                        validations.append({'name': 'Source Table Existence', 'status': 'success', 'message': f"Table '{mapping.source_table}' exists."})
+                        source_cols_meta = source_engine.get_columns(schema=mapping.source_schema or None, table=mapping.source_table, catalog=mapping.source_catalog or None)
+                else:
+                    source_cols_meta = source_engine.get_columns(table=mapping.source_table)
+                    validations.append({'name': 'Source Table Existence', 'status': 'success', 'message': f"Table '{mapping.source_table}' verified (mocked connection)."})
+            except Exception as e:
+                validations.append({'name': 'Source Table Check', 'status': 'warning', 'message': f'Could not verify source table: {str(e)}'})
+
+    # 4. Target Table Check
+    if not mapping.target_table:
+        validations.append({'name': 'Target Table', 'status': 'error', 'message': 'Target table is not selected.'})
+        has_critical_error = True
+    else:
+        try:
+            if not target_engine.is_mocked():
+                tables = target_engine.get_tables(schema=mapping.target_schema or None, catalog=mapping.target_catalog or None)
+                if mapping.target_table not in tables and mapping.target_table.upper() not in [t.upper() for t in tables]:
+                    validations.append({'name': 'Target Table Existence', 'status': 'error', 'message': f"Table '{mapping.target_table}' was not found in target schema."})
+                    has_critical_error = True
+                else:
+                    validations.append({'name': 'Target Table Existence', 'status': 'success', 'message': f"Table '{mapping.target_table}' exists."})
+                    target_cols_meta = target_engine.get_columns(schema=mapping.target_schema or None, table=mapping.target_table, catalog=mapping.target_catalog or None)
+            else:
+                target_cols_meta = target_engine.get_columns(table=mapping.target_table)
+                validations.append({'name': 'Target Table Existence', 'status': 'success', 'message': f"Table '{mapping.target_table}' verified (mocked connection)."})
+        except Exception as e:
+            validations.append({'name': 'Target Table Check', 'status': 'warning', 'message': f'Could not verify target table: {str(e)}'})
+
+    # 5. Mappings Check
+    mappings_count = mapping.column_mappings.count()
+    if mappings_count == 0:
+        validations.append({'name': 'Column Mappings', 'status': 'error', 'message': 'No columns mapped between source and target.'})
+        has_critical_error = True
+    else:
+        validations.append({'name': 'Column Mappings', 'status': 'success', 'message': f'{mappings_count} columns mapped.'})
+
+        # 6. Source and Target Column Existence & Datatype Compatibility Check
+        src_cols_dict = {c['name'].lower(): c['type'] for c in source_cols_meta} if source_cols_meta else {}
+        tgt_cols_dict = {c['name'].lower(): c['type'] for c in target_cols_meta} if target_cols_meta else {}
+
+        column_existence_passed = True
+        datatype_issues = []
+
+        for cm in mapping.column_mappings.all():
+            # Check Source column
+            if source_cols_meta and mapping.query_type != 'custom_query':
+                if cm.source_column.lower() not in src_cols_dict:
+                    validations.append({'name': 'Column Existence', 'status': 'error', 'message': f"Source column '{cm.source_column}' does not exist in table."})
+                    has_critical_error = True
+                    column_existence_passed = False
+            
+            # Check Target column
+            if target_cols_meta:
+                if cm.target_column.lower() not in tgt_cols_dict:
+                    validations.append({'name': 'Column Existence', 'status': 'error', 'message': f"Target column '{cm.target_column}' does not exist in table."})
+                    has_critical_error = True
+                    column_existence_passed = False
+
+            # Datatype compatibility
+            if source_cols_meta and target_cols_meta and mapping.query_type != 'custom_query':
+                src_type = src_cols_dict.get(cm.source_column.lower(), '')
+                tgt_type = tgt_cols_dict.get(cm.target_column.lower(), '')
+                if src_type and tgt_type:
+                    src_cat = get_datatype_category(src_type)
+                    tgt_cat = get_datatype_category(tgt_type)
+                    if src_cat != tgt_cat:
+                        datatype_issues.append(f"Mapped '{cm.source_column}' ({src_type}) to '{cm.target_column}' ({tgt_type}).")
+
+        if column_existence_passed and mappings_count > 0:
+            validations.append({'name': 'Column Existence', 'status': 'success', 'message': 'All mapped columns exist in source and target.'})
+
+        if datatype_issues:
+            msg = "Datatype mismatch detected (may cause conversion failures):<br>" + "<br>".join(datatype_issues)
+            validations.append({'name': 'Datatype Compatibility', 'status': 'warning', 'message': msg})
+        else:
+            if mappings_count > 0:
+                validations.append({'name': 'Datatype Compatibility', 'status': 'success', 'message': 'All mapped columns have compatible datatypes.'})
+
+    # 7. Table Filter check
+    if mapping.filter_column and mapping.query_type != 'custom_query':
+        if source_cols_meta and mapping.filter_column.lower() not in src_cols_dict:
+            validations.append({'name': 'Filter Column Check', 'status': 'error', 'message': f"Filter column '{mapping.filter_column}' does not exist in source table."})
+            has_critical_error = True
+        else:
+            validations.append({'name': 'Filter Column Check', 'status': 'success', 'message': f"Filter column '{mapping.filter_column}' verified."})
+
+    return JsonResponse({
+        'success': not has_critical_error,
+        'validations': validations
+    })
+
+
+@login_required
 @contributor_or_admin_required
 @require_POST
-def api_trigger_validation(request, mapping_id):
+def api_trigger_etl(request, mapping_id):
     """AJAX: Manually trigger a validation for a mapping."""
     if hasattr(request.user, 'profile') and request.user.profile.role == 'auditor':
         return JsonResponse({'success': False, 'error': 'Permission denied: Auditor cannot trigger validations.'}, status=403)
@@ -121,7 +296,7 @@ def api_trigger_validation(request, mapping_id):
         except Exception:
             parameters = {}
 
-    run = ValidationRun.objects.create(
+    run = ETLRun.objects.create(
         mapping=mapping,
         triggered_by=request.user,
         trigger_type='manual',
@@ -131,12 +306,12 @@ def api_trigger_validation(request, mapping_id):
 
     # Try to use Celery, fall back to synchronous
     try:
-        from .tasks import run_validation_task
-        run_validation_task.delay(run.id)
+        from .tasks import run_etl_task
+        run_etl_task.delay(run.id)
     except Exception:
         # Fallback: run synchronously
-        from .engine import ValidationEngine
-        engine = ValidationEngine(run)
+        from .engine import ETLEngine
+        engine = ETLEngine(run)
         try:
             engine.execute()
             if run.triggered_by:
@@ -168,7 +343,7 @@ def export_report(request, run_id):
     import openpyxl
     from openpyxl.styles import Font, Alignment, PatternFill
     
-    run = get_object_or_404(ValidationRun, id=run_id)
+    run = get_object_or_404(ETLRun, id=run_id)
     mapping = run.mapping
     results = run.results.select_related('column_mapping').all()
 
@@ -245,7 +420,7 @@ def export_report(request, run_id):
         AuditLog.objects.create(
             user=request.user,
             action=f"Report Generated: {mapping.source_table} on {val_date}",
-            entity_type="ValidationRun",
+            entity_type="ETLRun",
             entity_id=run.id,
             level="success",
         )
@@ -281,7 +456,7 @@ def get_applicable_operations(category):
 
 @login_required
 @contributor_or_admin_required
-def quick_validate_view(request):
+def quick_etl_view(request):
     """Create a quick mapping and trigger validation from the dashboard."""
     if request.method == 'POST':
         try:
@@ -294,6 +469,10 @@ def quick_validate_view(request):
             target_schema = request.POST.get('target_schema', '')
             target_table = request.POST.get('target_table', '')
             load_mode = request.POST.get('load_mode', 'truncate')
+            try:
+                batch_size = int(request.POST.get('batch_size', 10000))
+            except (ValueError, TypeError):
+                batch_size = 10000
             
             # Resolving Source Date Filters
             source_date_column = request.POST.get('source_date_column', '')
@@ -362,6 +541,7 @@ def quick_validate_view(request):
                 'target_schema': target_schema,
                 'target_table': target_table,
                 'load_mode': load_mode,
+                'batch_size': batch_size,
                 'created_by': request.user,
                 'source_date_column': source_date_column,
                 'source_date_filter_type': source_date_filter_type,
@@ -501,7 +681,7 @@ def quick_validate_view(request):
                 )
                 
                 for op in col.get('operations', []):
-                    ValidationRule.objects.create(
+                    ETLStep.objects.create(
                         column_mapping=col_mapping,
                         operation=op,
                     )
@@ -513,7 +693,7 @@ def quick_validate_view(request):
             except Exception:
                 parameters = {}
 
-            run = ValidationRun.objects.create(
+            run = ETLRun.objects.create(
                 mapping=mapping,
                 triggered_by=request.user,
                 trigger_type='manual',
@@ -527,11 +707,11 @@ def quick_validate_view(request):
             
             # Execute validation run (eager or async)
             try:
-                from .tasks import run_validation_task
-                run_validation_task.delay(run.id)
+                from .tasks import run_etl_task
+                run_etl_task.delay(run.id)
             except Exception:
-                from .engine import ValidationEngine
-                engine = ValidationEngine(run)
+                from .engine import ETLEngine
+                engine = ETLEngine(run)
                 try:
                     engine.execute()
                     if run.triggered_by:
@@ -590,9 +770,9 @@ def api_mapping_rules_metadata(request, mapping_id):
 
 @login_required
 @contributor_or_admin_required
-def validation_delete_view(request, run_id):
+def etl_delete_view(request, run_id):
     """Delete a validation run."""
-    run = get_object_or_404(ValidationRun, id=run_id)
+    run = get_object_or_404(ETLRun, id=run_id)
     if request.method == 'POST':
         run.delete()
         messages.success(request, f'Validation Run {run_id} deleted successfully.')
@@ -610,10 +790,10 @@ def pipeline_monitor_history_view(request, mapping_id):
         Mapping.objects.select_related('source_connection', 'target_connection', 'created_by'),
         id=mapping_id
     )
-    runs = list(mapping.validation_runs.select_related('triggered_by').all().order_by('-created_at'))
-    total_count = ValidationRun.objects.count()
+    runs = list(mapping.etl_runs.select_related('triggered_by').all().order_by('-created_at'))
+    total_count = ETLRun.objects.count()
     for run in runs:
-        runs_after = ValidationRun.objects.filter(id__gt=run.id).count()
+        runs_after = ETLRun.objects.filter(id__gt=run.id).count()
         run.rev_index = total_count - runs_after
 
     return render(request, 'validations/pipeline_history.html', {
@@ -647,7 +827,7 @@ def api_send_report_email(request, run_id):
     if '@' not in email:
         return JsonResponse({'success': False, 'error': 'Invalid email address format.'}, status=400)
 
-    run = get_object_or_404(ValidationRun, id=run_id)
+    run = get_object_or_404(ETLRun, id=run_id)
     
     try:
         from notifications.email_service import send_validation_email

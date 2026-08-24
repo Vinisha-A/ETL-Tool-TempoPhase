@@ -3,18 +3,18 @@ Celery tasks for validation execution.
 """
 import logging
 from celery import shared_task
-from .models import ValidationRun
-from .engine import ValidationEngine
+from .models import ETLRun
+from .engine import ETLEngine
 
 logger = logging.getLogger('validations')
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=60)
-def run_validation_task(self, run_id):
+def run_etl_task(self, run_id):
     """Execute a validation run asynchronously."""
     try:
-        run = ValidationRun.objects.get(id=run_id)
-        engine = ValidationEngine(run)
+        run = ETLRun.objects.get(id=run_id)
+        engine = ETLEngine(run)
         engine.execute()
 
         try:
@@ -22,7 +22,7 @@ def run_validation_task(self, run_id):
             AuditLog.objects.create(
                 user=run.triggered_by,
                 action=f'Validation Completed: {run.mapping.name}',
-                entity_type='ValidationRun',
+                entity_type='ETLRun',
                 entity_id=run.id,
                 details={
                     'total': run.total_checks,
@@ -44,12 +44,12 @@ def run_validation_task(self, run_id):
         except Exception:
             pass
 
-    except ValidationRun.DoesNotExist:
-        logger.error(f"ValidationRun {run_id} not found")
+    except ETLRun.DoesNotExist:
+        logger.error(f"ETLRun {run_id} not found")
     except Exception as exc:
         logger.error(f"Validation task failed: {exc}")
         try:
-            run = ValidationRun.objects.get(id=run_id)
+            run = ETLRun.objects.get(id=run_id)
             run.status = 'failed'
             run.error_message = str(exc)
             run.save()

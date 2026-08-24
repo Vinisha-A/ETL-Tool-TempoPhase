@@ -22,7 +22,7 @@ def send_validation_email(run, workflow=None, recipient_email=None):
             recipient_email = run.triggered_by.email
 
     if not recipient_email:
-        logger.warning(f"No recipient email resolved for ValidationRun {run.id}. Skipping email notification.")
+        logger.warning(f"No recipient email resolved for ETLRun {run.id}. Skipping email notification.")
         return None
 
     # Step 1: Generate Excel Report
@@ -105,7 +105,7 @@ def send_validation_email(run, workflow=None, recipient_email=None):
         notification.sent_status = 'success'
         notification.sent_time = timezone.now()
         notification.save()
-        logger.info(f"Email notification successfully sent to {recipient_email} for ValidationRun {run.id}")
+        logger.info(f"Email notification successfully sent to {recipient_email} for ETLRun {run.id}")
         
     except Exception as e:
         notification.sent_status = 'failed'
@@ -119,6 +119,6 @@ def send_validation_email(run, workflow=None, recipient_email=None):
             err_msg = f"SMTP/Connection Error ({type(e).__name__}): Connection to the mail server failed. Please check your SMTP settings in settings.py / .env and VDI network permissions."
         notification.error_message = err_msg
         notification.save()
-        logger.error(f"Failed sending validation email to {recipient_email} for ValidationRun {run.id}: {e}")
+        logger.error(f"Failed sending validation email to {recipient_email} for ETLRun {run.id}: {e}")
 
     return notification

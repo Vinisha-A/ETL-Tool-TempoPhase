@@ -236,16 +236,16 @@ def api_trigger_workflow(request, workflow_id):
         from .tasks import execute_workflow_task
         execute_workflow_task.delay(workflow.id, 'manual')
     except Exception:
-        from validations.models import ValidationRun
-        from validations.engine import ValidationEngine
-        run = ValidationRun.objects.create(
+        from validations.models import ETLRun
+        from validations.engine import ETLEngine
+        run = ETLRun.objects.create(
             mapping=workflow.mapping,
             workflow=workflow,
             trigger_type='manual',
             status='pending',
             selected_columns=workflow.selected_columns,
         )
-        engine = ValidationEngine(run)
+        engine = ETLEngine(run)
         try:
             engine.execute()
             if workflow.created_by:

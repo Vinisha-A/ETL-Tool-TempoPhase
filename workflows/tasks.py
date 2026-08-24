@@ -16,8 +16,8 @@ logger = logging.getLogger('workflows')
 def execute_workflow_task(self, workflow_id, trigger_source='scheduled'):
     """Execute a scheduled workflow — creates and runs a validation."""
     from .models import Workflow
-    from validations.models import ValidationRun
-    from validations.engine import ValidationEngine
+    from validations.models import ETLRun
+    from validations.engine import ETLEngine
 
     try:
         workflow = Workflow.objects.select_related('mapping').get(id=workflow_id)
@@ -27,7 +27,7 @@ def execute_workflow_task(self, workflow_id, trigger_source='scheduled'):
             return
 
         # Create validation run
-        run = ValidationRun.objects.create(
+        run = ETLRun.objects.create(
             mapping=workflow.mapping,
             workflow=workflow,
             trigger_type=trigger_source,
@@ -36,7 +36,7 @@ def execute_workflow_task(self, workflow_id, trigger_source='scheduled'):
         )
 
         # Execute validation
-        engine = ValidationEngine(run)
+        engine = ETLEngine(run)
         engine.execute()
 
         # Update workflow

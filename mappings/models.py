@@ -67,11 +67,12 @@ class Mapping(models.Model):
     filter_condition = models.CharField(max_length=500, blank=True, null=True)
     load_mode = models.CharField(
         max_length=20,
-        choices=[('truncate', 'Truncate Load'), ('incremental', 'Incremental Load')],
+        choices=[('truncate', 'Full Load'), ('incremental', 'Incremental Load')],
         default='truncate'
     )
     incremental_column = models.CharField(max_length=200, blank=True, null=True)
     incremental_value = models.CharField(max_length=200, blank=True, null=True)
+    batch_size = models.IntegerField(default=10000, help_text='Number of records to fetch and load per batch.')
 
     # Metadata
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mappings')
@@ -105,7 +106,7 @@ class ColumnMapping(models.Model):
         return f"{self.source_column} → {self.target_column}"
 
 
-class ValidationRule(models.Model):
+class ETLStep(models.Model):
     """Validation operation to apply on a column mapping."""
 
     OPERATION_CHOICES = [

@@ -65,7 +65,7 @@
             <div class="nav-section-title">Reports & Logs</div>
             <a href="{% url 'validations:list' %}" class="nav-item {% if request.resolver_match.app_name == 'validations' %}active{% endif %}">
                 <span class="nav-icon"><i class="fas fa-check-double"></i></span>
-                Monitor
+                ETL Runs
             </a>
             <a href="{% url 'logs:list' %}" class="nav-item {% if request.resolver_match.app_name == 'logs' %}active{% endif %}">
                 <span class="nav-icon"><i class="fas fa-file-alt"></i></span>

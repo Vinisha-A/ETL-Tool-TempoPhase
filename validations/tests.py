@@ -4,8 +4,8 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
 from connections.models import DataConnection
-from mappings.models import Mapping, ColumnMapping, ValidationRule
-from validations.models import ValidationRun, ValidationResult
+from mappings.models import Mapping, ColumnMapping, ETLStep
+from validations.models import ETLRun, ETLResult
 from validations.views import get_datatype_category, get_applicable_operations
 
 class ValidationWorkspaceEnhancementsTestCase(TestCase):
@@ -179,7 +179,7 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
         self.assertEqual(str(mapping.target_date_filter_start), '2026-06-01')
         self.assertEqual(str(mapping.target_date_filter_end), '2026-06-10')
 
-        run = ValidationRun.objects.first()
+        run = ETLRun.objects.first()
         self.assertIsNotNone(run)
         self.assertEqual(str(run.source_date_filter_start), '2026-06-05')
         self.assertEqual(str(run.source_date_filter_end), '2026-06-05')
@@ -279,12 +279,12 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
             created_by=self.user
         )
         
-        run_match = ValidationRun.objects.create(
+        run_match = ETLRun.objects.create(
             mapping=mapping_match,
             status='completed',
             triggered_by=self.user
         )
-        run_mismatch = ValidationRun.objects.create(
+        run_mismatch = ETLRun.objects.create(
             mapping=mapping_mismatch,
             status='completed',
             triggered_by=self.user
@@ -360,7 +360,7 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
             target_date_filter_end=datetime.date(2026, 6, 10)
         )
         
-        run = ValidationRun.objects.create(
+        run = ETLRun.objects.create(
             mapping=mapping,
             triggered_by=self.user
         )
@@ -438,7 +438,7 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
             target_column='first_name',
             target_datatype='VARCHAR'
         )
-        ValidationRule.objects.create(
+        ETLStep.objects.create(
             column_mapping=col_map,
             operation='null_check'
         )
@@ -487,7 +487,7 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
         self.assertEqual(new_col_map.rules.first().operation, 'sum')
 
     def test_validation_engine_enhancements(self):
-        # Test refactored engine validation checks
+        # Test ETLEngine execution pipeline
         import tempfile
         import os
         import pandas as pd
@@ -497,9 +497,7 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
             tgt_csv = os.path.join(tmpdir, "target.csv")
             
             df_src = pd.DataFrame({'col': ['Active ', 'inactive', 'pending']})
-            df_tgt = pd.DataFrame({'col': ['active', 'inactive', 'pending']})
             df_src.to_csv(src_csv, index=False)
-            df_tgt.to_csv(tgt_csv, index=False)
             
             src_conn = DataConnection.objects.create(
                 name='Src File', connection_type='csv', host=tmpdir, created_by=self.user
@@ -514,10 +512,12 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
                 source_table='source.csv',
                 target_connection=tgt_conn,
                 target_table='target.csv',
+                load_mode='truncate',
+                batch_size=10000,
                 created_by=self.user
             )
             
-            col_map = ColumnMapping.objects.create(
+            ColumnMapping.objects.create(
                 mapping=mapping,
                 source_column='col',
                 source_datatype='VARCHAR',
@@ -525,36 +525,29 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
                 target_datatype='VARCHAR'
             )
             
-            run = ValidationRun.objects.create(
+            run = ETLRun.objects.create(
                 mapping=mapping,
                 triggered_by=self.user,
-                trigger_type='manual',
-                parameters={
-                    'col:pattern_match': '^[a-zA-Z\\s]+$',
-                }
+                trigger_type='manual'
             )
             
-            from validations.engine import ValidationEngine
-            engine = ValidationEngine(run)
+            from validations.engine import ETLEngine
+            engine = ETLEngine(run)
+            engine.execute()
             
-            # Test pattern_match with matching regex
-            res_pat_match = engine._run_check(col_map, 'pattern_match')
-            self.assertTrue(res_pat_match.is_match)
+            self.assertEqual(run.status, 'completed')
+            self.assertEqual(run.records_extracted, 3)
+            self.assertEqual(run.records_loaded, 3)
             
-            # Test pattern_match with non-matching regex
-            run.parameters['col:pattern_match'] = '^[a-z]+$'
-            run.save()
-            res_pat_mismatch = engine._run_check(col_map, 'pattern_match')
-            self.assertFalse(res_pat_mismatch.is_match)
-            self.assertIn("Pattern mismatch at row 1: source failed regex check", res_pat_mismatch.difference)
-            
-            # Test sum_length returns integers
-            res_len = engine._run_check(col_map, 'sum_length')
-            self.assertEqual(res_len.source_value, '22')
-            self.assertEqual(res_len.target_value, '21')
+            # Read target and verify data
+            df_tgt_loaded = pd.read_csv(tgt_csv)
+            self.assertEqual(len(df_tgt_loaded), 3)
+            self.assertEqual(list(df_tgt_loaded['col']), ['Active ', 'inactive', 'pending'])
 
     def test_databricks_catalog_aware_validation(self):
-        # Create Databricks source and target connections
+        from unittest.mock import patch
+        import pandas as pd
+        
         db_src = DataConnection.objects.create(
             name='DB Src', connection_type='databricks', host='dummy_host', database_name='db1', created_by=self.user
         )
@@ -562,7 +555,6 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
             name='DB Tgt', connection_type='databricks', host='dummy_host', database_name='db2', created_by=self.user
         )
 
-        # Create mapping with catalog fields populated
         mapping = Mapping.objects.create(
             name='Databricks Catalog Pipeline',
             source_connection=db_src,
@@ -576,7 +568,7 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
             created_by=self.user
         )
 
-        col_map = ColumnMapping.objects.create(
+        ColumnMapping.objects.create(
             mapping=mapping,
             source_column='customer_id',
             source_datatype='INTEGER',
@@ -584,21 +576,28 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
             target_datatype='INTEGER'
         )
 
-        # Create validation run
-        run = ValidationRun.objects.create(
+        run = ETLRun.objects.create(
             mapping=mapping,
             triggered_by=self.user,
             trigger_type='manual'
         )
 
-        # Run checks using the validation engine
-        from validations.engine import ValidationEngine
-        engine = ValidationEngine(run)
-
-        res = engine._run_check(col_map, 'count')
-        self.assertTrue(res.is_match)
-        self.assertEqual(res.source_value, '1250')
-        self.assertEqual(res.target_value, '1250')
+        from validations.engine import ETLEngine
+        engine = ETLEngine(run)
+        
+        # Mock database extraction and load
+        mock_df = pd.DataFrame({'customer_id': [1, 2]})
+        with patch.object(engine, '_extract_data_generator', return_value=[mock_df]), \
+             patch.object(engine.target_engine, 'write_data', return_value=2) as mock_write:
+            
+            engine.execute()
+            
+            self.assertEqual(run.status, 'completed')
+            mock_write.assert_called_once()
+            called_kwargs = mock_write.call_args[1]
+            self.assertEqual(called_kwargs['catalog'], 'tgt_catalog')
+            self.assertEqual(called_kwargs['schema'], 'tgt_schema')
+            self.assertEqual(called_kwargs['table'], 'customers')
 
     def test_pipeline_monitor_history_view(self):
         # Authenticate client
@@ -611,12 +610,12 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
             target_connection=self.target_conn,
             created_by=self.user
         )
-        run1 = ValidationRun.objects.create(
+        run1 = ETLRun.objects.create(
             mapping=mapping,
             status='completed',
             triggered_by=self.user
         )
-        run2 = ValidationRun.objects.create(
+        run2 = ETLRun.objects.create(
             mapping=mapping,
             status='failed',
             triggered_by=self.user
@@ -632,7 +631,7 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
         self.assertContains(response, f'status-badge-{run1.id}')
         self.assertContains(response, f'status-badge-{run2.id}')
 
-    def test_validation_results_preserved_on_pipeline_edit(self):
+    def test_etl_results_preserved_on_pipeline_edit(self):
         # Authenticate client
         self.client.login(username='testuser', password='password123')
         
@@ -653,12 +652,12 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
         )
         
         # Create run and validation result
-        run = ValidationRun.objects.create(
+        run = ETLRun.objects.create(
             mapping=mapping,
             status='completed',
             triggered_by=self.user
         )
-        result = ValidationResult.objects.create(
+        result = ETLResult.objects.create(
             run=run,
             column_mapping=col_map,
             source_column=col_map.source_column,
@@ -736,7 +735,7 @@ class AutomatedEmailNotificationTestCase(TestCase):
             target_column='customer_id',
             target_datatype='INTEGER'
         )
-        self.rule = ValidationRule.objects.create(
+        self.rule = ETLStep.objects.create(
             column_mapping=self.col_map,
             operation='count'
         )
@@ -749,7 +748,7 @@ class AutomatedEmailNotificationTestCase(TestCase):
         )
 
     def test_report_generation(self):
-        run = ValidationRun.objects.create(
+        run = ETLRun.objects.create(
             mapping=self.mapping,
             workflow=self.workflow,
             status='completed',
@@ -759,8 +758,8 @@ class AutomatedEmailNotificationTestCase(TestCase):
             passed_checks=1,
             failed_checks=0
         )
-        from validations.models import ValidationResult
-        ValidationResult.objects.create(
+        from validations.models import ETLResult
+        ETLResult.objects.create(
             run=run,
             column_mapping=self.col_map,
             operation='count',
@@ -778,7 +777,7 @@ class AutomatedEmailNotificationTestCase(TestCase):
             os.remove(filepath)
 
     def test_email_sending_flow(self):
-        run = ValidationRun.objects.create(
+        run = ETLRun.objects.create(
             mapping=self.mapping,
             workflow=self.workflow,
             status='completed',
@@ -788,8 +787,8 @@ class AutomatedEmailNotificationTestCase(TestCase):
             passed_checks=0,
             failed_checks=1
         )
-        from validations.models import ValidationResult
-        ValidationResult.objects.create(
+        from validations.models import ETLResult
+        ETLResult.objects.create(
             run=run,
             column_mapping=self.col_map,
             operation='count',
@@ -814,7 +813,7 @@ class AutomatedEmailNotificationTestCase(TestCase):
 
     def test_api_send_email_endpoint(self):
         self.client.login(username='testemailuser', password='password123')
-        run = ValidationRun.objects.create(
+        run = ETLRun.objects.create(
             mapping=self.mapping,
             workflow=self.workflow,
             status='completed',
@@ -824,8 +823,8 @@ class AutomatedEmailNotificationTestCase(TestCase):
             passed_checks=1,
             failed_checks=0
         )
-        from validations.models import ValidationResult
-        ValidationResult.objects.create(
+        from validations.models import ETLResult
+        ETLResult.objects.create(
             run=run,
             column_mapping=self.col_map,
             operation='count',
@@ -852,7 +851,7 @@ class AutomatedEmailNotificationTestCase(TestCase):
 
     def test_api_send_email_endpoint_none_error_handling(self):
         self.client.login(username='testemailuser', password='password123')
-        run = ValidationRun.objects.create(
+        run = ETLRun.objects.create(
             mapping=self.mapping,
             workflow=self.workflow,
             status='completed',
@@ -862,8 +861,8 @@ class AutomatedEmailNotificationTestCase(TestCase):
             passed_checks=1,
             failed_checks=0
         )
-        from validations.models import ValidationResult
-        ValidationResult.objects.create(
+        from validations.models import ETLResult
+        ETLResult.objects.create(
             run=run,
             column_mapping=self.col_map,
             operation='count',
@@ -888,7 +887,7 @@ class AutomatedEmailNotificationTestCase(TestCase):
 
 
 from unittest.mock import patch, MagicMock
-from validations.engine import ValidationEngine
+from validations.engine import ETLEngine
 from connections.connector import ConnectorEngine
 
 class LakehouseAggregationTestCase(TestCase):
@@ -911,44 +910,4 @@ class LakehouseAggregationTestCase(TestCase):
             target_table='int_fct_vp_ath3',
             target_schema='lm_edw_hdfc_dse',
             created_by=self.user,
-            is_active=True
-        )
-        self.col_map = ColumnMapping.objects.create(
-            mapping=self.mapping,
-            source_column='val',
-            target_column='val',
-            source_datatype='numeric',
-            target_datatype='numeric'
-        )
-        self.rule = ValidationRule.objects.create(
-            column_mapping=self.col_map,
-            operation='median',
-            is_active=True
-        )
-        self.run = ValidationRun.objects.create(
-            mapping=self.mapping,
-            status='running',
-            triggered_by=self.user
-        )
-
-    def test_lakehouse_median_query_uses_approx_percentile(self):
-        engine = ValidationEngine(self.run)
-        
-        # Mock execute_query to inspect constructed aggregate query
-        mock_execute = MagicMock(return_value=None)
-        
-        with patch.object(ConnectorEngine, 'is_mocked', return_value=False), \
-             patch.object(ConnectorEngine, 'execute_query', mock_execute):
-             
-            engine._prefetch_all_aggregates([self.col_map])
-            
-            self.assertTrue(mock_execute.called)
-            called_args = mock_execute.call_args[0]
-            constructed_sql = called_args[0]
-            
-            # Assert memory-efficient approx_percentile is generated and window order-by is avoided
-            self.assertIn('approx_percentile', constructed_sql.lower())
-            self.assertNotIn('row_number() over', constructed_sql.lower())
-
-
-
+            self.assertIn('SMTP/Connection Error', data['error'])

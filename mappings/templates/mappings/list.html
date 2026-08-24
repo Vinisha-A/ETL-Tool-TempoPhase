@@ -178,7 +178,7 @@
                                     <a href="{% url 'mappings:edit' mapping.id %}" class="btn btn-sm btn-outline" title="Edit Pipeline" style="padding: 6px 8px; font-size: 0.75rem;">
                                         <i class="fas fa-edit"></i>
                                     </a>
-                                    <button class="btn btn-sm btn-primary" onclick="triggerValidation({{ mapping.id }})" style="padding: 6px 8px; font-size: 0.75rem;">
+                                    <button class="btn btn-sm btn-primary" onclick="triggerETL({{ mapping.id }})" style="padding: 6px 8px; font-size: 0.75rem;">
                                         <i class="fas fa-play"></i>
                                     </button>
                                     {% endif %}

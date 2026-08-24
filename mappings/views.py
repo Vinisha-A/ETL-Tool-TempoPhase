@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.db.models import Q
 
-from .models import Mapping, ColumnMapping, ValidationRule, PipelineGroup, PipelineGroupAssignment
+from .models import Mapping, ColumnMapping, ETLStep, PipelineGroup, PipelineGroupAssignment
 from connections.models import DataConnection
 from accounts.decorators import contributor_or_admin_required
 
@@ -171,7 +171,7 @@ def get_applicable_operations(category):
 def mapping_create_view(request):
     """Create a new source-target mapping."""
     connections = DataConnection.objects.filter(is_active=True)
-    operations = ValidationRule.OPERATION_CHOICES
+    operations = ETLStep.OPERATION_CHOICES
     selected_group = (request.POST.get('group') or request.GET.get('group', '')).strip()
 
     if request.method == 'POST':
@@ -202,6 +202,14 @@ def mapping_create_view(request):
             filter_column = request.POST.get('filter_column', '')
             filter_condition = request.POST.get('filter_condition', '')
             load_mode = request.POST.get('load_mode', 'truncate')
+            try:
+                batch_size = int(request.POST.get('batch_size', 10000))
+            except (ValueError, TypeError):
+                batch_size = 10000
+            try:
+                batch_size = int(request.POST.get('batch_size', 10000))
+            except (ValueError, TypeError):
+                batch_size = 10000
             incremental_column = request.POST.get('incremental_column', '')
             incremental_value = request.POST.get('incremental_value', '')
 
@@ -278,6 +286,8 @@ def mapping_create_view(request):
                 'filter_column': filter_column,
                 'filter_condition': filter_condition,
                 'load_mode': load_mode,
+                'batch_size': batch_size,
+                'batch_size': batch_size,
                 'incremental_column': incremental_column,
                 'incremental_value': incremental_value,
                 'source_date_column': source_date_column,
@@ -441,7 +451,7 @@ def mapping_create_view(request):
                 # Add validation rules
                 selected_ops = col.get('operations', [])
                 for op in selected_ops:
-                    ValidationRule.objects.create(
+                    ETLStep.objects.create(
                         column_mapping=col_mapping,
                         operation=op,
                     )
@@ -529,7 +539,7 @@ def mapping_edit_view(request, mapping_id):
     """Edit an existing mapping."""
     mapping = get_object_or_404(Mapping, id=mapping_id, is_active=True)
     connections = DataConnection.objects.filter(is_active=True)
-    operations = ValidationRule.OPERATION_CHOICES
+    operations = ETLStep.OPERATION_CHOICES
 
     if request.method == 'POST':
         try:
@@ -759,7 +769,7 @@ def mapping_edit_view(request, mapping_id):
                 # Add validation rules
                 selected_ops = col.get('operations', [])
                 for op in selected_ops:
-                    ValidationRule.objects.create(
+                    ETLStep.objects.create(
                         column_mapping=col_mapping,
                         operation=op,
                     )

@@ -266,9 +266,14 @@
                 <div class="form-group">
                     <label>Load Mode *</label>
                     <select name="load_mode" id="load-mode" class="form-control" onchange="toggleLoadMode()" required>
-                        <option value="truncate" {% if mapping.load_mode == 'truncate' %}selected{% endif %}>Truncate Load (Clear target first)</option>
+                        <option value="truncate" {% if mapping.load_mode == 'truncate' %}selected{% endif %}>Full Load (Clear target first)</option>
                         <option value="incremental" {% if mapping.load_mode == 'incremental' %}selected{% endif %}>Incremental Load (Append new rows)</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label>Batch Size *</label>
+                    <input type="number" name="batch_size" id="batch-size" class="form-control" value="{{ mapping.batch_size|default:10000 }}" min="1" required>
+                    <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Number of records to fetch and load per batch/chunk (default: 10,000).</span>
                 </div>
             </div>
             <div id="incremental-section" style="display: none; margin-top: 16px;" class="form-row">

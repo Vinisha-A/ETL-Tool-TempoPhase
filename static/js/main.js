@@ -735,9 +735,115 @@ function pollValidationProgress(runId) {
 }
 
 
-// ─── Manual Trigger Validation ──────────────────────────────────────────────
-function triggerValidation(mappingId) {
-    if (!confirm('Are you sure you want to trigger this validation?')) return;
+// ─── Manual Trigger ETL ──────────────────────────────────────────────
+function closeETLValidationModal() {
+    const modal = document.getElementById('etl-validation-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => modal.remove(), 300);
+    }
+}
+
+function triggerETL(mappingId) {
+    // 1. Create and Append Modal Dynamically
+    let modalHTML = `
+    <div id="etl-validation-modal" class="modal-overlay">
+        <div class="modal" style="padding: 28px; max-width: 600px; width: 90%; position: relative;">
+            <div class="modal-header" style="padding: 0 0 16px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-check-circle" style="color: var(--primary);"></i> Pre-Run Validation Checks
+                </h3>
+                <button type="button" class="modal-close" onclick="closeETLValidationModal()" style="border: none; background: var(--bg-hover); color: var(--text-secondary); width: 32px; height: 32px; border-radius: var(--radius-md); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 20px 0 0;">
+                <div id="validation-checks-loading" style="text-align: center; padding: 24px;">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--primary); margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;"></i>
+                    <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Running checks on connection, tables, columns, and datatypes...</p>
+                </div>
+                <div id="validation-checks-list" style="display: none; flex-direction: column; gap: 12px; max-height: 280px; overflow-y: auto; padding-right: 8px;">
+                    <!-- Populated dynamically -->
+                </div>
+                <div id="validation-warning-message" style="display: none; margin-top: 20px; padding: 16px; background: #FFFBEB; border-left: 4px solid #D97706; border-radius: var(--radius-md); color: #78350F; font-size: 0.9rem;">
+                    <div style="display: flex; gap: 8px; align-items: flex-start;">
+                        <i class="fas fa-exclamation-triangle" style="margin-top: 2px;"></i>
+                        <div>
+                            <strong>Full Load Warning:</strong> Full Load will clear the existing target data and load the selected source dataset. Do you want to continue?
+                        </div>
+                    </div>
+                </div>
+                <div id="validation-error-message" style="display: none; margin-top: 20px; padding: 16px; background: #FEF2F2; border-left: 4px solid #DC2626; border-radius: var(--radius-md); color: #991B1B; font-size: 0.9rem;">
+                    <div style="display: flex; gap: 8px; align-items: flex-start;">
+                        <i class="fas fa-times-circle" style="margin-top: 2px;"></i>
+                        <div>
+                            <strong>Critical Errors Detected:</strong> Please fix the errors in connection or schema mapping before triggering the ETL load.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 16px 0 0; border-top: 1px solid var(--border-light); display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; margin-bottom: 0;">
+                <button type="button" class="btn btn-secondary" onclick="closeETLValidationModal()" style="height: 38px; padding: 0 18px; border-radius: var(--radius-sm); background: #fff; border: 1px solid var(--border-medium); color: var(--text-secondary); font-weight: 500; cursor: pointer;">Cancel</button>
+                <button type="button" id="confirm-etl-run-btn" class="btn btn-primary" style="height: 38px; padding: 0 18px; border-radius: var(--radius-sm); background: var(--primary); color: white; border: none; font-weight: 500; cursor: pointer; display: none;">Confirm & Run</button>
+            </div>
+        </div>
+    </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    const modalElement = document.getElementById('etl-validation-modal');
+    setTimeout(() => modalElement.classList.add('active'), 50);
+
+    // 2. Fetch and run checks
+    fetch(`/validations/api/validate/${mappingId}/`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('validation-checks-loading').style.display = 'none';
+            const listContainer = document.getElementById('validation-checks-list');
+            listContainer.style.display = 'flex';
+
+            let listHTML = '';
+            data.validations.forEach(check => {
+                let iconClass = 'fa-check-circle text-success';
+                let bgStyle = 'background: #F0FDF4; border: 1px solid #DCFCE7; color: #166534;';
+                if (check.status === 'error') {
+                    iconClass = 'fa-times-circle text-danger';
+                    bgStyle = 'background: #FEF2F2; border: 1px solid #FEE2E2; color: #991B1B;';
+                } else if (check.status === 'warning') {
+                    iconClass = 'fa-exclamation-triangle text-warning';
+                    bgStyle = 'background: #FFFBEB; border: 1px solid #FEF3C7; color: #78350F;';
+                }
+
+                listHTML += `
+                <div style="padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.85rem; display: flex; align-items: flex-start; gap: 10px; ${bgStyle}">
+                    <i class="fas ${iconClass}" style="margin-top: 3px; font-size: 1rem;"></i>
+                    <div style="flex-grow: 1;">
+                        <strong style="display: block; font-weight: 600; margin-bottom: 2px;">${check.name}</strong>
+                        <span style="font-size: 0.8rem; line-height: 1.2;">${check.message}</span>
+                    </div>
+                </div>
+                `;
+            });
+            listContainer.innerHTML = listHTML;
+
+            // Show appropriate warning or error box
+            if (data.success) {
+                document.getElementById('validation-warning-message').style.display = 'block';
+                const runBtn = document.getElementById('confirm-etl-run-btn');
+                runBtn.style.display = 'block';
+                runBtn.onclick = () => executeETLLoad(mappingId);
+            } else {
+                document.getElementById('validation-error-message').style.display = 'block';
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            showToast('Failed to execute pre-run validations.', 'error');
+            closeETLValidationModal();
+        });
+}
+
+function executeETLLoad(mappingId) {
+    closeETLValidationModal();
+    showToast('Triggering ETL Run...', 'info');
 
     // First fetch if any parameter-based rules are active
     fetch(`/validations/api/mapping/${mappingId}/rules-metadata/`)
@@ -749,15 +855,14 @@ function triggerValidation(mappingId) {
                     let promptMsg = `Enter input parameter for column "${rule.column}" (${rule.operation_display}):`;
                     let userInput = prompt(promptMsg);
                     if (userInput === null) {
-                        // User cancelled the prompt
-                        showToast('Validation run cancelled.', 'warning');
+                        showToast('ETL run cancelled.', 'warning');
                         return;
                     }
                     parameters[`${rule.column}:${rule.operation}`] = userInput;
                 }
             }
 
-            // Trigger validation via POST sending the parameters
+            // Trigger execution
             fetchWithCSRF(`/validations/api/trigger/${mappingId}/`, {
                 method: 'POST',
                 body: JSON.stringify({ parameters: parameters })
@@ -765,18 +870,18 @@ function triggerValidation(mappingId) {
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    showToast('Validation triggered successfully!', 'success');
+                    showToast('ETL Run triggered successfully!', 'success');
                     if (data.run_id) {
                         pollValidationProgress(data.run_id);
                     }
                     setTimeout(() => location.reload(), 1000);
                 } else {
-                    showToast(data.error || 'Failed to trigger validation', 'error');
+                    showToast(data.error || 'Failed to trigger ETL run', 'error');
                 }
             })
             .catch(() => showToast('Network error', 'error'));
         })
-        .catch(() => showToast('Failed to check validation rules metadata', 'error'));
+        .catch(() => showToast('Failed to check pipeline metadata', 'error'));
 }
 
 // ─── Trigger Workflow ───────────────────────────────────────────────────────
