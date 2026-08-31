@@ -123,6 +123,33 @@
                 </div>
             </div>
 
+            <!-- Extraction Configuration -->
+            <div class="card mb-24" style="box-shadow: none; border: 1.5px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-lg);">
+                <div class="card-header" style="background: var(--primary-subtle); border-bottom: 1.5px solid var(--border-light); padding: 16px 20px;">
+                    <h3 style="font-size: 1.1rem; color: var(--primary); font-weight: 600; margin: 0;">
+                        <i class="fas fa-filter" style="color: var(--primary); margin-right: 8px;"></i> Extraction Configuration
+                    </h3>
+                </div>
+                <div class="card-body" style="padding: 20px;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Query Type *</label>
+                            <select name="query_type" id="query-type" class="form-control" onchange="toggleQueryType()" required>
+                                <option value="table" selected>Table Select (Browse & Map)</option>
+                                <option value="custom_query">Custom SQL Query</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="custom-query-section" style="display: none; margin-top: 16px;">
+                        <div class="form-group mb-0">
+                            <label>Custom SQL Query *</label>
+                            <textarea name="custom_query" id="custom-query" class="form-control" rows="6" placeholder="SELECT * FROM source_table WHERE ..."></textarea>
+                            <span class="text-muted" style="font-size: 0.8rem; margin-top: 6px; display: block;">This query will execute directly against the source database connection.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="mapping-panel mb-24">
                 <!-- Source Panel -->
                 <div class="panel-source">
@@ -163,6 +190,19 @@
                             </div>
                         </div>
 
+                        <!-- Custom Filter Section -->
+                        <div id="table-filter-section" style="margin-top: 16px; display: block;" class="form-row">
+                            <div class="form-group">
+                                <label>Filter Column (Optional)</label>
+                                <select name="filter_column" id="filter-column" class="form-control">
+                                    <option value="">-- None --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Filter Condition / Value</label>
+                                <input type="text" name="filter_condition" id="filter-condition" class="form-control" placeholder="e.g. > 100 or = 'Active'">
+                            </div>
+                        </div>
 
                     </div>
                 </div>
@@ -514,10 +554,138 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Load Mode *</label>
-                            <select name="load_mode" id="load-mode" class="form-control" required>
+                            <select name="load_mode" id="load-mode" class="form-control" onchange="toggleLoadMode()" required>
                                 <option value="truncate" selected>Full Load (Clear target first)</option>
                                 <option value="incremental">Incremental Load (Append new rows)</option>
+                                <option value="scd1">SCD Type 1</option>
+                                <option value="scd2">SCD Type 2</option>
                             </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Batch Size *</label>
+                            <input type="number" name="batch_size" id="batch-size" class="form-control" value="10000" min="1" required>
+                            <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Number of records to fetch and load per batch/chunk (default: 10,000).</span>
+                        </div>
+                    </div>
+
+                    <!-- Incremental Load Strategy Section -->
+                    <div id="incremental-section" style="display: none; margin-top: 16px;" class="form-row">
+                        <div class="form-group">
+                            <label>Incremental Column *</label>
+                            <select name="incremental_column" id="incremental-column" class="form-control">
+                                <option value="">-- Select Incremental Column --</option>
+                            </select>
+                            <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Column used to detect new records (e.g. ID, date, timestamp).</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Starting Incremental Value (Optional)</label>
+                            <input type="text" name="incremental_value" id="incremental-value" class="form-control" placeholder="e.g. 2026-08-19 or 1000">
+                            <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Leave blank to automatically derive from the target table's maximum value.</span>
+                        </div>
+                    </div>
+
+                    <!-- SCD Type 1 Section -->
+                    <div id="scd1-section" style="display: none; margin-top: 16px;" class="form-row">
+                        <div class="form-group">
+                            <label>Business Key Column *</label>
+                            <select name="scd_business_key" id="scd1-business-key" class="form-control">
+                                <option value="">-- Select Business Key --</option>
+                            </select>
+                            <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Key column used to match source and target records.</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Columns to Track/Update *</label>
+                            <div id="scd1-track-columns-container" style="border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 10px; max-height: 150px; overflow-y: auto; background: var(--bg-input);">
+                                <span class="text-muted" style="font-size: 0.85rem;">Select target table to view columns</span>
+                            </div>
+                            <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Columns to track for changes. Unselected columns will not be updated.</span>
+                        </div>
+                    </div>
+
+                    <!-- SCD Type 2 Section -->
+                    <div id="scd2-section" style="display: none; margin-top: 16px;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Business Key Column *</label>
+                                <select name="scd_business_key" id="scd2-business-key" class="form-control">
+                                    <option value="">-- Select Business Key --</option>
+                                </select>
+                                <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Key column used to match source and target records.</span>
+                            </div>
+                            <div class="form-group">
+                                <label>Columns to Track for Changes *</label>
+                                <div id="scd2-track-columns-container" style="border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 10px; max-height: 150px; overflow-y: auto; background: var(--bg-input);">
+                                    <span class="text-muted" style="font-size: 0.85rem;">Select target table to view columns</span>
+                                </div>
+                                <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Columns that trigger a new version when values change.</span>
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-top: 16px;">
+                            <div class="form-group">
+                                <label>Effective From Column *</label>
+                                <select name="scd_effective_from" id="scd2-effective-from" class="form-control">
+                                    <option value="">-- Select Effective From --</option>
+                                </select>
+                                <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Stores version start date/time.</span>
+                            </div>
+                            <div class="form-group">
+                                <label>Effective To Column *</label>
+                                <select name="scd_effective_to" id="scd2-effective-to" class="form-control">
+                                    <option value="">-- Select Effective To --</option>
+                                </select>
+                                <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Stores version end date/time.</span>
+                            </div>
+                            <div class="form-group">
+                                <label>Current/Active Flag Column *</label>
+                                <select name="scd_active_flag" id="scd2-active-flag" class="form-control">
+                                    <option value="">-- Select Active Flag --</option>
+                                </select>
+                                <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Flag indicating current active version (e.g. True/False, Y/N).</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Settings Section (Pre-SQL / Post-SQL) -->
+            <div class="card mb-24" style="box-shadow: none; border: 1.5px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-lg);">
+                <div class="card-header" style="background: var(--primary-subtle); border-bottom: 1.5px solid var(--border-light); padding: 16px 20px; cursor: pointer;" onclick="toggleAdvancedSettings()">
+                    <h3 style="font-size: 1.1rem; color: var(--primary); font-weight: 600; margin: 0; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <span><i class="fas fa-sliders-h"></i> Advanced Settings (Pre-SQL / Post-SQL)</span>
+                        <i id="advanced-settings-chevron" class="fas fa-chevron-down text-muted" style="transition: transform 0.2s;"></i>
+                    </h3>
+                </div>
+                <div id="advanced-settings-body" style="display: none; padding: 20px;">
+                    <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+                        <!-- Pre-SQL -->
+                        <div style="flex: 1; min-width: 280px;">
+                            <div class="form-group">
+                                <label style="font-weight: 500;">Pre-SQL</label>
+                                <textarea name="pre_sql" id="pre-sql" class="form-control" rows="4" style="font-family: monospace; font-size: 0.88rem;" placeholder="e.g. DELETE FROM target_table WHERE region = 'US'"></textarea>
+                                <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">SQL query to execute before loading data.</span>
+                            </div>
+                            <div class="form-group" style="margin-top: 12px;">
+                                <label style="font-weight: 500;">Execute Pre-SQL On</label>
+                                <select name="pre_sql_location" id="pre-sql-location" class="form-control">
+                                    <option value="target" selected>Target Connection</option>
+                                    <option value="source">Source Connection</option>
+                                </select>
+                            </div>
+                        </div>
+                        <!-- Post-SQL -->
+                        <div style="flex: 1; min-width: 280px;">
+                            <div class="form-group">
+                                <label style="font-weight: 500;">Post-SQL</label>
+                                <textarea name="post_sql" id="post-sql" class="form-control" rows="4" style="font-family: monospace; font-size: 0.88rem;" placeholder="e.g. UPDATE audit_log SET status = 'DONE'"></textarea>
+                                <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">SQL query to execute after a successful load.</span>
+                            </div>
+                            <div class="form-group" style="margin-top: 12px;">
+                                <label style="font-weight: 500;">Execute Post-SQL On</label>
+                                <select name="post_sql_location" id="post-sql-location" class="form-control">
+                                    <option value="target" selected>Target Connection</option>
+                                    <option value="source">Source Connection</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -676,6 +844,19 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function validateQuickForm() {
+    const queryTypeSelect = document.getElementById('query-type');
+    const queryType = queryTypeSelect ? queryTypeSelect.value : 'table';
+    if (queryType === 'custom_query') {
+        const query = document.getElementById('custom-query').value.trim();
+        if (!query) {
+            showToast('Please enter a custom SQL query', 'warning');
+            return false;
+        }
+        const mappingJsonInput = document.getElementById('column-mappings-json');
+        if (mappingJsonInput) mappingJsonInput.value = '[]';
+        return true;
+    }
+
     if (typeof validateDateFilters === 'function') {
         if (!validateDateFilters()) {
             return false;
@@ -708,7 +889,8 @@ function validateQuickForm() {
 
     // Set JSON payload
     const jsonStr = getColumnMappingsJSON();
-    document.getElementById('column-mappings-json').value = jsonStr;
+    const mappingJsonInput = document.getElementById('column-mappings-json');
+    if (mappingJsonInput) mappingJsonInput.value = jsonStr;
 
     // Check if operations are configured
     const mappings = JSON.parse(jsonStr);

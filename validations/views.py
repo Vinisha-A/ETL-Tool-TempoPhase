@@ -523,6 +523,11 @@ def quick_etl_view(request):
             except (ValueError, TypeError):
                 batch_size = 10000
             
+            query_type = request.POST.get('query_type', 'table')
+            custom_query = request.POST.get('custom_query', '')
+            if query_type == 'custom_query':
+                source_table = 'Custom Query'
+
             # Resolving Source Date Filters
             source_date_column = request.POST.get('source_date_column', '')
             source_date_filter_type = request.POST.get('source_date_filter_type', 'none')
@@ -576,7 +581,10 @@ def quick_etl_view(request):
             # Create a quick mapping
             from django.utils import timezone
             now_str = timezone.now().strftime('%Y-%m-%d %H:%M')
-            quick_name = f"Quick Validate: {source_table} -> {target_table} ({now_str})".strip()
+            if query_type == 'custom_query':
+                quick_name = f"Quick Validate: Custom Query -> {target_table} ({now_str})".strip()
+            else:
+                quick_name = f"Quick Validate: {source_table} -> {target_table} ({now_str})".strip()
             
             mapping_data = {
                 'name': quick_name,
@@ -592,6 +600,21 @@ def quick_etl_view(request):
                 'load_mode': load_mode,
                 'batch_size': batch_size,
                 'created_by': request.user,
+                'query_type': query_type,
+                'custom_query': custom_query,
+                'filter_column': request.POST.get('filter_column', ''),
+                'filter_condition': request.POST.get('filter_condition', ''),
+                'incremental_column': request.POST.get('incremental_column', ''),
+                'incremental_value': request.POST.get('incremental_value', ''),
+                'scd_business_key': request.POST.get('scd_business_key', ''),
+                'scd_track_columns': ','.join(request.POST.getlist('scd_track_columns')),
+                'scd_effective_from': request.POST.get('scd_effective_from', ''),
+                'scd_effective_to': request.POST.get('scd_effective_to', ''),
+                'scd_active_flag': request.POST.get('scd_active_flag', ''),
+                'pre_sql': request.POST.get('pre_sql', ''),
+                'pre_sql_location': request.POST.get('pre_sql_location', 'target'),
+                'post_sql': request.POST.get('post_sql', ''),
+                'post_sql_location': request.POST.get('post_sql_location', 'target'),
                 'source_date_column': source_date_column,
                 'source_date_filter_type': source_date_filter_type,
                 'source_date_filter_start': source_date_filter_start,

@@ -520,6 +520,125 @@ function loadColumns(connId, schema, table, prefix, catalog = '') {
                     });
                 }
 
+                // Populate filter-column and incremental-column if prefix is source
+                if (prefix === 'source') {
+                    const filterSelect = document.getElementById('filter-column');
+                    if (filterSelect) {
+                        const oldVal = filterSelect.value;
+                        filterSelect.innerHTML = '<option value="">-- None --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            filterSelect.appendChild(opt);
+                        });
+                        if (oldVal) filterSelect.value = oldVal;
+                    }
+                    const incSelect = document.getElementById('incremental-column');
+                    if (incSelect) {
+                        const oldVal = incSelect.value;
+                        incSelect.innerHTML = '<option value="">-- Select Incremental Column --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            incSelect.appendChild(opt);
+                        });
+                        if (oldVal) incSelect.value = oldVal;
+                    }
+                } else if (prefix === 'target') {
+                    const bKey1 = document.getElementById('scd1-business-key');
+                    const bKey2 = document.getElementById('scd2-business-key');
+                    const effFrom = document.getElementById('scd2-effective-from');
+                    const effTo = document.getElementById('scd2-effective-to');
+                    const actFlag = document.getElementById('scd2-active-flag');
+                    const scd1Track = document.getElementById('scd1-track-columns-container');
+                    const scd2Track = document.getElementById('scd2-track-columns-container');
+
+                    if (bKey1) {
+                        const oldVal = bKey1.value;
+                        bKey1.innerHTML = '<option value="">-- Select Business Key --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            bKey1.appendChild(opt);
+                        });
+                        if (oldVal) bKey1.value = oldVal;
+                    }
+                    if (bKey2) {
+                        const oldVal = bKey2.value;
+                        bKey2.innerHTML = '<option value="">-- Select Business Key --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            bKey2.appendChild(opt);
+                        });
+                        if (oldVal) bKey2.value = oldVal;
+                    }
+                    if (effFrom) {
+                        const oldVal = effFrom.value;
+                        effFrom.innerHTML = '<option value="">-- Select Effective From --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            effFrom.appendChild(opt);
+                        });
+                        if (oldVal) effFrom.value = oldVal;
+                    }
+                    if (effTo) {
+                        const oldVal = effTo.value;
+                        effTo.innerHTML = '<option value="">-- Select Effective To --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            effTo.appendChild(opt);
+                        });
+                        if (oldVal) effTo.value = oldVal;
+                    }
+                    if (actFlag) {
+                        const oldVal = actFlag.value;
+                        actFlag.innerHTML = '<option value="">-- Select Active Flag --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            actFlag.appendChild(opt);
+                        });
+                        if (oldVal) actFlag.value = oldVal;
+                    }
+
+                    if (scd1Track) {
+                        scd1Track.innerHTML = '';
+                        data.columns.forEach(col => {
+                            const lbl = document.createElement('label');
+                            lbl.style.display = 'flex';
+                            lbl.style.alignItems = 'center';
+                            lbl.style.gap = '6px';
+                            lbl.style.marginBottom = '4px';
+                            lbl.style.cursor = 'pointer';
+                            lbl.innerHTML = `<input type="checkbox" name="scd_track_columns" value="${col.name}"> ${col.name}`;
+                            scd1Track.appendChild(lbl);
+                        });
+                    }
+                    if (scd2Track) {
+                        scd2Track.innerHTML = '';
+                        data.columns.forEach(col => {
+                            const lbl = document.createElement('label');
+                            lbl.style.display = 'flex';
+                            lbl.style.alignItems = 'center';
+                            lbl.style.gap = '6px';
+                            lbl.style.marginBottom = '4px';
+                            lbl.style.cursor = 'pointer';
+                            lbl.innerHTML = `<input type="checkbox" name="scd_track_columns" value="${col.name}"> ${col.name}`;
+                            scd2Track.appendChild(lbl);
+                        });
+                    }
+                }
+
                 // Populate checklists for Multiple Columns Mode
                 const checklistContainer = document.getElementById(`${prefix}-columns-checkboxes-list`);
                 if (checklistContainer) {
@@ -2842,4 +2961,105 @@ document.addEventListener('submit', function(e) {
         showTablePreviewModal(url, title);
     }
 });
+
+
+function toggleQueryType() {
+    const queryTypeSelect = document.getElementById('query-type');
+    if (!queryTypeSelect) return;
+    const type = queryTypeSelect.value;
+    const customSection = document.getElementById('custom-query-section');
+    const columnSection = document.getElementById('column-selection-section');
+    const tableFilterSection = document.getElementById('table-filter-section');
+
+    if (type === 'custom_query') {
+        if (customSection) customSection.style.display = 'block';
+        if (columnSection) columnSection.style.display = 'none';
+        if (tableFilterSection) tableFilterSection.style.display = 'none';
+        
+        const srcTable = document.getElementById('source-table');
+        if (srcTable) srcTable.required = false;
+        
+        const customQ = document.getElementById('custom-query');
+        if (customQ) customQ.required = true;
+    } else {
+        if (customSection) customSection.style.display = 'none';
+        if (columnSection) columnSection.style.display = 'block';
+        if (tableFilterSection) tableFilterSection.style.display = 'block';
+        
+        const srcTable = document.getElementById('source-table');
+        if (srcTable) srcTable.required = true;
+        
+        const customQ = document.getElementById('custom-query');
+        if (customQ) customQ.required = false;
+    }
+}
+
+function toggleLoadMode() {
+    const loadModeSelect = document.getElementById('load-mode');
+    if (!loadModeSelect) return;
+    const mode = loadModeSelect.value;
+    const incSection = document.getElementById('incremental-section');
+    const scd1Section = document.getElementById('scd1-section');
+    const scd2Section = document.getElementById('scd2-section');
+
+    if (incSection) incSection.style.display = 'none';
+    if (scd1Section) scd1Section.style.display = 'none';
+    if (scd2Section) scd2Section.style.display = 'none';
+
+    disableInputs(incSection, true);
+    disableInputs(scd1Section, true);
+    disableInputs(scd2Section, true);
+
+    if (mode === 'incremental') {
+        if (incSection) {
+            incSection.style.display = 'flex';
+            disableInputs(incSection, false);
+            const incCol = document.getElementById('incremental-column');
+            if (incCol) incCol.required = true;
+        }
+    } else if (mode === 'scd1') {
+        if (scd1Section) {
+            scd1Section.style.display = 'flex';
+            disableInputs(scd1Section, false);
+            const scd1BKey = document.getElementById('scd1-business-key');
+            if (scd1BKey) scd1BKey.required = true;
+        }
+    } else if (mode === 'scd2') {
+        if (scd2Section) {
+            scd2Section.style.display = 'block';
+            disableInputs(scd2Section, false);
+            const scd2BKey = document.getElementById('scd2-business-key');
+            if (scd2BKey) scd2BKey.required = true;
+            const scd2From = document.getElementById('scd2-effective-from');
+            if (scd2From) scd2From.required = true;
+            const scd2To = document.getElementById('scd2-effective-to');
+            if (scd2To) scd2To.required = true;
+            const scd2Act = document.getElementById('scd2-active-flag');
+            if (scd2Act) scd2Act.required = true;
+        }
+    }
+}
+
+function disableInputs(container, disable) {
+    if (!container) return;
+    container.querySelectorAll('input, select, textarea').forEach(el => {
+        el.disabled = disable;
+        if (disable) {
+            el.required = false;
+        }
+    });
+}
+
+function toggleAdvancedSettings() {
+    const body = document.getElementById('advanced-settings-body');
+    const chevron = document.getElementById('advanced-settings-chevron');
+    if (!body) return;
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
+    } else {
+        body.style.display = 'none';
+        if (chevron) chevron.style.transform = 'rotate(0deg)';
+    }
+}
 

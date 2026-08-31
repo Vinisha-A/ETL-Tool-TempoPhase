@@ -200,6 +200,50 @@ class ValidationWorkspaceEnhancementsTestCase(TestCase):
         self.assertIn('avg', operations)
         self.assertIn('null_check', operations)
 
+    def test_quick_validate_with_custom_query_and_scd2(self):
+        # Authenticate client
+        self.client.login(username='testuser', password='password123')
+        
+        response = self.client.post(reverse('validations:quick'), {
+            'source_connection': self.source_conn.id,
+            'target_connection': self.target_conn.id,
+            'target_schema': 'public',
+            'target_table': 'customers',
+            'query_type': 'custom_query',
+            'custom_query': 'SELECT customer_id, first_name FROM customers WHERE age > 18',
+            'load_mode': 'scd2',
+            'batch_size': 5000,
+            'scd_business_key': 'customer_id',
+            'scd_track_columns': ['first_name', 'last_name'],
+            'scd_effective_from': 'eff_from',
+            'scd_effective_to': 'eff_to',
+            'scd_active_flag': 'active_flag',
+            'pre_sql': 'DELETE FROM staging',
+            'pre_sql_location': 'source',
+            'post_sql': 'VACUUM',
+            'post_sql_location': 'target',
+        })
+
+        # Should redirect to validation progress
+        self.assertEqual(response.status_code, 302)
+        
+        # Verify mapping was created correctly with custom query and SCD configuration
+        mapping = Mapping.objects.first()
+        self.assertIsNotNone(mapping)
+        self.assertEqual(mapping.query_type, 'custom_query')
+        self.assertEqual(mapping.custom_query, 'SELECT customer_id, first_name FROM customers WHERE age > 18')
+        self.assertEqual(mapping.load_mode, 'scd2')
+        self.assertEqual(mapping.batch_size, 5000)
+        self.assertEqual(mapping.scd_business_key, 'customer_id')
+        self.assertEqual(mapping.scd_track_columns, 'first_name,last_name')
+        self.assertEqual(mapping.scd_effective_from, 'eff_from')
+        self.assertEqual(mapping.scd_effective_to, 'eff_to')
+        self.assertEqual(mapping.scd_active_flag, 'active_flag')
+        self.assertEqual(mapping.pre_sql, 'DELETE FROM staging')
+        self.assertEqual(mapping.pre_sql_location, 'source')
+        self.assertEqual(mapping.post_sql, 'VACUUM')
+        self.assertEqual(mapping.post_sql_location, 'target')
+
     def test_pipeline_mapping_creation_view(self):
         # Authenticate client
         self.client.login(username='testuser', password='password123')
