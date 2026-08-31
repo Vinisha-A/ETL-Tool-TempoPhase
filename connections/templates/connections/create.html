@@ -227,18 +227,18 @@ document.addEventListener('DOMContentLoaded', function() {
             passwordInput.setAttribute('required', 'required');
             {% endif %}
 
-        } else if (val === 'postgresql' || val === 'mysql' || val === 'db2') {
+        } else if (val === 'postgresql' || val === 'mysql' || val === 'db2' || val === 'sqlserver') {
             dbFields.style.display = 'block';
             fileFields.style.display = 'none';
 
-            // Show driver field for db2, hide for postgresql/mysql
-            if (val === 'db2') {
+            // Show driver field for db2 and sqlserver, hide for postgresql/mysql
+            if (val === 'db2' || val === 'sqlserver') {
                 if (groupDriver) groupDriver.style.display = 'block';
                 if (driverInput) {
-                    driverInput.placeholder = 'e.g., ibm_db or pyodbc;DRIVER={IBM DB2}';
+                    driverInput.placeholder = val === 'db2' ? 'e.g., ibm_db or pyodbc;DRIVER={IBM DB2}' : 'e.g., ODBC Driver 17 for SQL Server';
                 }
                 if (hintDriver) {
-                    hintDriver.innerHTML = 'e.g., <code>ibm_db</code> or <code>pyodbc;DRIVER={IBM DB2}</code>';
+                    hintDriver.innerHTML = val === 'db2' ? 'e.g., <code>ibm_db</code> or <code>pyodbc;DRIVER={IBM DB2}</code>' : 'Optional. e.g., <code>ODBC Driver 17 for SQL Server</code> or <code>pymssql</code>';
                 }
             } else {
                 if (groupDriver) groupDriver.style.display = 'none';
@@ -261,6 +261,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (val === 'postgresql') portInput.placeholder = '5432';
             else if (val === 'mysql') portInput.placeholder = '3306';
             else if (val === 'db2') portInput.placeholder = '50000';
+            else if (val === 'sqlserver') portInput.placeholder = '1433';
 
             hostInput.setAttribute('required', 'required');
             databaseNameInput.setAttribute('required', 'required');

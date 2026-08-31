@@ -373,6 +373,39 @@ class ConnectionViewsTestCase(TestCase):
             'databricks://token:dapi+token+123@databricks-host?http_path=sql/protocolv1/o/123/http_path_value'
         )
 
+        # 3. Test SQL Server (sqlserver) connection string default pyodbc
+        conn_sql = DataConnection.objects.create(
+            name='Test SQL ConnStr default',
+            connection_type='sqlserver',
+            host='10.0.0.2',
+            port=1433,
+            database_name='sales_db',
+            username='sa',
+            created_by=self.user
+        )
+        conn_sql.set_password('Secret@123!')
+        self.assertEqual(
+            conn_sql.get_connection_string(),
+            'mssql+pyodbc://sa:Secret%40123%21@10.0.0.2:1433/sales_db?driver=ODBC+Driver+17+for+SQL+Server'
+        )
+
+        # 4. Test SQL Server (sqlserver) connection string with pymssql driver override
+        conn_sql_py = DataConnection.objects.create(
+            name='Test SQL ConnStr pymssql',
+            connection_type='sqlserver',
+            host='10.0.0.2',
+            port=1433,
+            database_name='sales_db',
+            username='sa',
+            driver='pymssql',
+            created_by=self.user
+        )
+        conn_sql_py.set_password('Secret@123!')
+        self.assertEqual(
+            conn_sql_py.get_connection_string(),
+            'mssql+pymssql://sa:Secret%40123%21@10.0.0.2:1433/sales_db'
+        )
+
     def test_lakehouse_parameter_conversion(self):
         from unittest.mock import MagicMock, patch
         import pandas as pd

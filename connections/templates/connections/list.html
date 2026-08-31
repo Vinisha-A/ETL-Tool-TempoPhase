@@ -34,9 +34,8 @@
                     <tr>
                         <td class="fw-600">{{ conn.name }}</td>
                         <td>
-                            <span class="badge {% if conn.connection_type == 'postgresql' %}badge-primary{% elif conn.connection_type == 'mysql' %}badge-info{% else %}badge-warning{% endif %}">
-                                {% if conn.connection_type == 'postgresql' %}<i class="fas fa-elephant"></i>
-                                {% elif conn.connection_type == 'mysql' %}<i class="fas fa-database"></i>
+                            <span class="badge {% if conn.connection_type == 'postgresql' or conn.connection_type == 'sqlserver' %}badge-primary{% elif conn.connection_type == 'mysql' or conn.connection_type == 'oracle' or conn.connection_type == 'db2' %}badge-info{% elif conn.connection_type == 'databricks' or conn.connection_type == 'lakehouse' %}badge-success{% else %}badge-warning{% endif %}">
+                                {% if conn.is_database %}<i class="fas fa-database"></i>
                                 {% else %}<i class="fas fa-file"></i>{% endif %}
                                 {{ conn.get_connection_type_display }}
                             </span>

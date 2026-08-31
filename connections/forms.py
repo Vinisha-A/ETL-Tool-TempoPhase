@@ -32,7 +32,7 @@ class DataConnectionForm(forms.ModelForm):
         cleaned_data = super().clean()
         connection_type = cleaned_data.get('connection_type')
 
-        if connection_type in ('postgresql', 'mysql', 'db2'):
+        if connection_type in ('postgresql', 'mysql', 'db2', 'sqlserver'):
             if not cleaned_data.get('host'):
                 self.add_error('host', f'Host is required for {connection_type.upper()}.')
             if not cleaned_data.get('database_name'):

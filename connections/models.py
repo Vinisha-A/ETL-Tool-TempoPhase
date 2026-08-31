@@ -32,6 +32,7 @@ class DataConnection(models.Model):
         ('db2', 'DB2'),
         ('oracle', 'Oracle'),
         ('lakehouse', 'Lakehouse'),
+        ('sqlserver', 'SQL Server'),
         ('csv', 'Flat File (CSV)'),
         ('parquet', 'Flat File (Parquet)'),
         ('excel', 'Flat File (Excel)'),
@@ -71,7 +72,7 @@ class DataConnection(models.Model):
 
     @property
     def is_database(self):
-        return self.connection_type in ('postgresql', 'mysql', 'databricks', 'db2', 'oracle', 'lakehouse')
+        return self.connection_type in ('postgresql', 'mysql', 'databricks', 'db2', 'oracle', 'lakehouse', 'sqlserver')
 
     @property
     def is_file(self):
@@ -148,4 +149,11 @@ class DataConnection(models.Model):
         elif self.connection_type == 'lakehouse':
             driver = self.driver.strip() if self.driver else 'pyodbc'
             return f"{driver}://{encoded_username}:{encoded_password}@{self.host}:{self.port or 443}/{self.database_name}"
+        elif self.connection_type == 'sqlserver':
+            driver = self.driver.strip() if self.driver else 'ODBC Driver 17 for SQL Server'
+            if 'pymssql' in driver.lower():
+                return f"mssql+pymssql://{encoded_username}:{encoded_password}@{self.host}:{self.port or 1433}/{self.database_name}"
+            else:
+                quoted_driver = urllib.parse.quote_plus(driver)
+                return f"mssql+pyodbc://{encoded_username}:{encoded_password}@{self.host}:{self.port or 1433}/{self.database_name}?driver={quoted_driver}"
         return None

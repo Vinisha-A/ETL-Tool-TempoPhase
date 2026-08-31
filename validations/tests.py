@@ -881,6 +881,200 @@ class AutomatedEmailNotificationTestCase(TestCase):
             response = self.client.post(url, json.dumps({'email': 'manual_recipient@example.com'}), content_type='application/json')
             self.assertEqual(response.status_code, 200)
             data = response.json()
+        # Verify Excel export also runs successfully and handles the deleted mapping
+        export_url = reverse('validations:export', args=[run.id])
+        response_export = self.client.get(export_url)
+        self.assertEqual(response_export.status_code, 200)
+        self.assertEqual(response_export['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        self.assertEqual(response_export['Content-Disposition'], 'attachment; filename="Preservation Test Mapping.xlsx"')
+
+
+import os
+from workflows.models import Workflow, EmailNotification
+
+class AutomatedEmailNotificationTestCase(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='testemailuser', password='password123')
+        from accounts.models import UserProfile
+        profile, created = UserProfile.objects.get_or_create(user=self.user)
+        profile.role = 'contributor'
+        profile.save()
+
+        self.source_conn = DataConnection.objects.create(
+            name='Src Conn',
+            connection_type='postgresql',
+            host='dummy',
+            database_name='src_db',
+            created_by=self.user
+        )
+        self.target_conn = DataConnection.objects.create(
+            name='Tgt Conn',
+            connection_type='postgresql',
+            host='dummy',
+            database_name='tgt_db',
+            created_by=self.user
+        )
+        self.mapping = Mapping.objects.create(
+            name='Daily Customer Sync',
+            source_connection=self.source_conn,
+            source_table='customers',
+            target_connection=self.target_conn,
+            target_table='customers',
+            created_by=self.user
+        )
+        self.col_map = ColumnMapping.objects.create(
+            mapping=self.mapping,
+            source_column='customer_id',
+            source_datatype='INTEGER',
+            target_column='customer_id',
+            target_datatype='INTEGER'
+        )
+        self.rule = ETLStep.objects.create(
+            column_mapping=self.col_map,
+            operation='count'
+        )
+        self.workflow = Workflow.objects.create(
+            name='Customer_Data_Reconciliation',
+            description='Customer Master Data Validation',
+            mapping=self.mapping,
+            recipient_email='recipient@example.com',
+            created_by=self.user
+        )
+
+    def test_report_generation(self):
+        run = ETLRun.objects.create(
+            mapping=self.mapping,
+            workflow=self.workflow,
+            status='completed',
+            triggered_by=self.user,
+            trigger_type='scheduled',
+            total_checks=1,
+            passed_checks=1,
+            failed_checks=0
+        )
+        from validations.models import ETLResult
+        ETLResult.objects.create(
+            run=run,
+            column_mapping=self.col_map,
+            operation='count',
+            source_value='100',
+            target_value='100',
+            is_match=True,
+            difference='0'
+        )
+
+        from notifications.report_generator import generate_excel_report
+        filepath = generate_excel_report(run)
+        self.assertTrue(filepath.endswith('.xlsx'))
+        self.assertTrue(os.path.exists(filepath))
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+    def test_email_sending_flow(self):
+        run = ETLRun.objects.create(
+            mapping=self.mapping,
+            workflow=self.workflow,
+            status='completed',
+            triggered_by=self.user,
+            trigger_type='scheduled',
+            total_checks=1,
+            passed_checks=0,
+            failed_checks=1
+        )
+        from validations.models import ETLResult
+        ETLResult.objects.create(
+            run=run,
+            column_mapping=self.col_map,
+            operation='count',
+            source_value='100',
+            target_value='98',
+            is_match=False,
+            difference='2'
+        )
+
+        from notifications.email_service import send_validation_email
+        notification = send_validation_email(run)
+        
+        self.assertIsNotNone(notification)
+        self.assertEqual(notification.recipient_email, 'recipient@example.com')
+        self.assertEqual(notification.sent_status, 'success')
+        self.assertIn('Customer_Data_Reconciliation', notification.subject)
+        self.assertIn('Status: Failed', notification.email_body)
+        self.assertTrue(os.path.exists(notification.attachment_path))
+        
+        if os.path.exists(notification.attachment_path):
+            os.remove(notification.attachment_path)
+
+    def test_api_send_email_endpoint(self):
+        self.client.login(username='testemailuser', password='password123')
+        run = ETLRun.objects.create(
+            mapping=self.mapping,
+            workflow=self.workflow,
+            status='completed',
+            triggered_by=self.user,
+            trigger_type='manual',
+            total_checks=1,
+            passed_checks=1,
+            failed_checks=0
+        )
+        from validations.models import ETLResult
+        ETLResult.objects.create(
+            run=run,
+            column_mapping=self.col_map,
+            operation='count',
+            source_value='100',
+            target_value='100',
+            is_match=True,
+            difference='0'
+        )
+
+        url = reverse('validations:api_send_email', args=[run.id])
+        response = self.client.post(url, json.dumps({'email': 'manual_recipient@example.com'}), content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertIn('Report email successfully sent', data['message'])
+
+        # Verify EmailNotification record
+        notification = EmailNotification.objects.filter(run=run).latest('created_at')
+        self.assertEqual(notification.recipient_email, 'manual_recipient@example.com')
+        self.assertEqual(notification.sent_status, 'success')
+        
+        if os.path.exists(notification.attachment_path):
+            os.remove(notification.attachment_path)
+
+    def test_api_send_email_endpoint_none_error_handling(self):
+        self.client.login(username='testemailuser', password='password123')
+        run = ETLRun.objects.create(
+            mapping=self.mapping,
+            workflow=self.workflow,
+            status='completed',
+            triggered_by=self.user,
+            trigger_type='manual',
+            total_checks=1,
+            passed_checks=1,
+            failed_checks=0
+        )
+        from validations.models import ETLResult
+        ETLResult.objects.create(
+            run=run,
+            column_mapping=self.col_map,
+            operation='count',
+            source_value='100',
+            target_value='100',
+            is_match=True,
+            difference='0'
+        )
+
+        from django.core.mail import EmailMessage
+        import smtplib
+        mock_send = MagicMock(side_effect=smtplib.SMTPConnectError(None, None))
+        
+        with patch.object(EmailMessage, 'send', mock_send):
+            url = reverse('validations:api_send_email', args=[run.id])
+            response = self.client.post(url, json.dumps({'email': 'manual_recipient@example.com'}), content_type='application/json')
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
             self.assertFalse(data['success'])
             self.assertNotIn('None', data['error'])
             self.assertIn('SMTP/Connection Error', data['error'])
@@ -910,4 +1104,226 @@ class LakehouseAggregationTestCase(TestCase):
             target_table='int_fct_vp_ath3',
             target_schema='lm_edw_hdfc_dse',
             created_by=self.user,
-            self.assertIn('SMTP/Connection Error', data['error'])
+        )
+
+
+class ScdAndSqlEnhancementsTestCase(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='scduser', password='password123')
+        
+        # Ensure user has a profile with contributor/admin role if required
+        from accounts.models import UserProfile
+        profile, created = UserProfile.objects.get_or_create(user=self.user)
+        profile.role = 'contributor'
+        profile.save()
+
+        self.source_conn = DataConnection.objects.create(
+            name='CSV Source',
+            connection_type='csv',
+            host='dummy_source_path',
+            created_by=self.user
+        )
+        self.target_conn = DataConnection.objects.create(
+            name='CSV Target',
+            connection_type='csv',
+            host='dummy_target_path',
+            created_by=self.user
+        )
+
+    def test_scd_type1_file_load(self):
+        import pandas as pd
+        import tempfile
+        import os
+        from validations.engine import ETLEngine
+        from connections.connector import ConnectorEngine
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_csv = os.path.join(tmpdir, "src.csv")
+            tgt_csv = os.path.join(tmpdir, "tgt.csv")
+
+            src_df = pd.DataFrame({
+                'id': [1, 2],
+                'name': ['John Updated', 'Alice'],
+                'age': [31, 25]
+            })
+            src_df.to_csv(src_csv, index=False)
+
+            tgt_df = pd.DataFrame({
+                'id': [1],
+                'name': ['John Old'],
+                'age': [30]
+            })
+            tgt_df.to_csv(tgt_csv, index=False)
+
+            src_connection = DataConnection.objects.create(
+                name='Temp Src', connection_type='csv', host=tmpdir, created_by=self.user
+            )
+            tgt_connection = DataConnection.objects.create(
+                name='Temp Tgt', connection_type='csv', host=tmpdir, created_by=self.user
+            )
+
+            mapping = Mapping.objects.create(
+                name='SCD1 File Mapping',
+                source_connection=src_connection,
+                source_table='src.csv',
+                target_connection=tgt_connection,
+                target_table='tgt.csv',
+                load_mode='scd1',
+                scd_business_key='id',
+                scd_track_columns='name,age',
+                created_by=self.user
+            )
+            ColumnMapping.objects.create(mapping=mapping, source_column='id', target_column='id')
+            ColumnMapping.objects.create(mapping=mapping, source_column='name', target_column='name')
+            ColumnMapping.objects.create(mapping=mapping, source_column='age', target_column='age')
+
+            run = ETLRun.objects.create(mapping=mapping, triggered_by=self.user)
+            engine = ETLEngine(run)
+            engine.execute()
+
+            result_df = pd.read_csv(tgt_csv)
+            self.assertEqual(len(result_df), 2)
+            self.assertEqual(result_df.loc[result_df['id'] == 1, 'name'].values[0], 'John Updated')
+            self.assertEqual(result_df.loc[result_df['id'] == 1, 'age'].values[0], 31)
+            self.assertEqual(result_df.loc[result_df['id'] == 2, 'name'].values[0], 'Alice')
+
+            run.refresh_from_db()
+            self.assertEqual(run.status, 'completed')
+            self.assertEqual(run.records_extracted, 2)
+            self.assertEqual(run.records_loaded, 2)
+            self.assertEqual(run.records_inserted, 1)
+            self.assertEqual(run.records_updated, 1)
+
+    def test_scd_type2_file_load(self):
+        import pandas as pd
+        import tempfile
+        import os
+        from validations.engine import ETLEngine
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_csv = os.path.join(tmpdir, "src.csv")
+            tgt_csv = os.path.join(tmpdir, "tgt.csv")
+
+            src_df = pd.DataFrame({
+                'id': [1, 2],
+                'name': ['John Updated', 'Alice'],
+                'age': [31, 25]
+            })
+            src_df.to_csv(src_csv, index=False)
+
+            tgt_df = pd.DataFrame({
+                'id': [1],
+                'name': ['John Old'],
+                'age': [30],
+                'eff_from': ['2026-08-01'],
+                'eff_to': ['9999-12-31'],
+                'is_current': [True]
+            })
+            tgt_df.to_csv(tgt_csv, index=False)
+
+            src_connection = DataConnection.objects.create(
+                name='Temp Src', connection_type='csv', host=tmpdir, created_by=self.user
+            )
+            tgt_connection = DataConnection.objects.create(
+                name='Temp Tgt', connection_type='csv', host=tmpdir, created_by=self.user
+            )
+
+            mapping = Mapping.objects.create(
+                name='SCD2 File Mapping',
+                source_connection=src_connection,
+                source_table='src.csv',
+                target_connection=tgt_connection,
+                target_table='tgt.csv',
+                load_mode='scd2',
+                scd_business_key='id',
+                scd_track_columns='name,age',
+                scd_effective_from='eff_from',
+                scd_effective_to='eff_to',
+                scd_active_flag='is_current',
+                created_by=self.user
+            )
+            ColumnMapping.objects.create(mapping=mapping, source_column='id', target_column='id')
+            ColumnMapping.objects.create(mapping=mapping, source_column='name', target_column='name')
+            ColumnMapping.objects.create(mapping=mapping, source_column='age', target_column='age')
+
+            run = ETLRun.objects.create(mapping=mapping, triggered_by=self.user)
+            engine = ETLEngine(run)
+            engine.execute()
+
+            result_df = pd.read_csv(tgt_csv)
+            self.assertEqual(len(result_df), 3)
+
+            old_john = result_df[(result_df['id'] == 1) & (result_df['name'] == 'John Old')]
+            self.assertEqual(len(old_john), 1)
+            self.assertIn(str(old_john['is_current'].values[0]).upper(), ('FALSE', '0', 'N'))
+
+            new_john = result_df[(result_df['id'] == 1) & (result_df['name'] == 'John Updated')]
+            self.assertEqual(len(new_john), 1)
+            self.assertEqual(new_john['age'].values[0], 31)
+            self.assertIn(str(new_john['is_current'].values[0]).upper(), ('TRUE', '1', 'Y'))
+
+            run.refresh_from_db()
+            self.assertEqual(run.status, 'completed')
+            self.assertEqual(run.records_inserted, 2)
+            self.assertEqual(run.records_updated, 1)
+
+    def test_pre_post_sql_execution(self):
+        from unittest.mock import patch
+        from validations.engine import ETLEngine
+
+        mapping = Mapping.objects.create(
+            name='SQL Execution Mapping',
+            source_connection=self.source_conn,
+            source_table='src_table',
+            target_connection=self.target_conn,
+            target_table='tgt_table',
+            load_mode='truncate',
+            pre_sql="DELETE FROM target_table",
+            pre_sql_location='target',
+            post_sql="INSERT INTO logs VALUES(1)",
+            post_sql_location='target',
+            created_by=self.user
+        )
+
+        run = ETLRun.objects.create(mapping=mapping, triggered_by=self.user)
+        
+        with patch('connections.connector.ConnectorEngine.execute_statement') as mock_stmt, \
+             patch('validations.engine.ETLEngine._extract_data_generator') as mock_extract, \
+             patch('validations.engine.ETLEngine._load_data') as mock_load:
+            
+            import pandas as pd
+            mock_extract.return_value = [pd.DataFrame({'col1': [1]})]
+            mock_load.return_value = 1
+
+            engine = ETLEngine(run)
+            engine.execute()
+
+            self.assertEqual(mock_stmt.call_count, 2)
+            mock_stmt.assert_any_call("DELETE FROM target_table")
+            mock_stmt.assert_any_call("INSERT INTO logs VALUES(1)")
+
+            run.refresh_from_db()
+            self.assertEqual(run.pre_sql_status, 'SUCCESS')
+            self.assertEqual(run.post_sql_status, 'SUCCESS')
+
+    def test_api_validation_endpoint_with_scd(self):
+        self.client.login(username='scduser', password='password123')
+        
+        mapping = Mapping.objects.create(
+            name='Invalid SCD Mapping',
+            source_connection=self.source_conn,
+            source_table='src_table',
+            target_connection=self.target_conn,
+            target_table='tgt_table',
+            load_mode='scd1',
+            scd_business_key='',
+            created_by=self.user
+        )
+
+        response = self.client.get(reverse('validations:api_validate', args=[mapping.id]))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['success'])
+        
+        error_names = [v['name'] for v in data['validations'] if v['status'] == 'error']
+        self.assertIn('SCD Business Key', error_names)

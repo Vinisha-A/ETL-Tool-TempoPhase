@@ -21,21 +21,29 @@
         </div>
     </div>
     <div class="card-body">
-        <div class="report-summary mb-24">
-            <div class="report-metric">
+        <div class="report-summary mb-24" style="display: flex; gap: 16px; flex-wrap: wrap;">
+            <div class="report-metric" style="flex: 1; min-width: 120px;">
                 <div class="metric-value">{{ run.total_checks }}</div>
                 <div class="metric-label">Total Steps</div>
             </div>
-            <div class="report-metric pass">
+            <div class="report-metric pass" style="flex: 1; min-width: 120px;">
                 <div class="metric-value">{{ run.records_extracted }}</div>
-                <div class="metric-label">Records Extracted</div>
+                <div class="metric-label">Extracted</div>
             </div>
-            <div class="report-metric pass">
-                <div class="metric-value">{{ run.records_loaded }}</div>
-                <div class="metric-label">Records Loaded</div>
+            <div class="report-metric pass" style="flex: 1; min-width: 120px; background: rgba(var(--primary-rgb), 0.05); border-color: var(--primary);">
+                <div class="metric-value">{{ run.records_inserted }}</div>
+                <div class="metric-label">Inserted</div>
             </div>
-            <div class="report-metric pass">
-                <div class="metric-value" style="font-size: 1.1rem; line-height: 2.2rem;">{{ run.mapping.get_load_mode_display }}</div>
+            <div class="report-metric pass" style="flex: 1; min-width: 120px; background: rgba(52, 152, 219, 0.05); border-color: #3498db;">
+                <div class="metric-value" style="color: #3498db;">{{ run.records_updated }}</div>
+                <div class="metric-label">Updated</div>
+            </div>
+            <div class="report-metric {% if run.records_failed > 0 %}fail{% else %}pass{% endif %}" style="flex: 1; min-width: 120px;">
+                <div class="metric-value">{{ run.records_failed }}</div>
+                <div class="metric-label">Failed</div>
+            </div>
+            <div class="report-metric pass" style="flex: 1; min-width: 140px;">
+                <div class="metric-value" style="font-size: 1.0rem; line-height: 2.2rem;">{{ run.mapping.get_load_mode_display }}</div>
                 <div class="metric-label">Load Mode</div>
             </div>
         </div>
@@ -152,7 +160,10 @@
                                     Prepared target table {{ run.mapping.target_table }}
                                 {% elif result.operation == 'loading' %}
                                     Loaded into {{ run.mapping.target_table }}
-                                
+                                {% elif result.operation == 'pre_sql' %}
+                                    Executed Pre-SQL query on {{ run.mapping.pre_sql_location }} database
+                                {% elif result.operation == 'post_sql' %}
+                                    Executed Post-SQL query on {{ run.mapping.post_sql_location }} database
                                 {% else %}
                                     Completed successfully
                                 {% endif %}

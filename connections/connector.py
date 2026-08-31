@@ -279,7 +279,7 @@ class ConnectorEngine:
 
     def _uses_catalog_hierarchy(self):
         """Return True for connection types that use catalog->schema->table hierarchy."""
-        return self.connection.connection_type in ('databricks', 'lakehouse', 'oracle', 'db2', 'postgresql', 'mysql')
+        return self.connection.connection_type in ('databricks', 'lakehouse', 'oracle', 'db2', 'postgresql', 'mysql', 'sqlserver')
 
     def _build_full_table_name(self, table, schema=None, catalog=None):
         """Build a fully qualified table identifier for supported dialects.
@@ -329,7 +329,7 @@ class ConnectorEngine:
                 return [self.connection.database_name or 'ORCL']
             elif self.connection.connection_type == 'db2':
                 return [self.connection.database_name or 'DB2INST1']
-            elif self.connection.connection_type in ('postgresql', 'mysql'):
+            elif self.connection.connection_type in ('postgresql', 'mysql', 'sqlserver'):
                 return [self.connection.database_name or 'default']
             return []
 
@@ -340,7 +340,7 @@ class ConnectorEngine:
 
         # For Oracle/DB2/PG/MySQL — the catalog is just the database name stored in the connection.
         # No remote call needed; return the single catalog immediately.
-        if ctype in ('oracle', 'db2', 'postgresql', 'mysql'):
+        if ctype in ('oracle', 'db2', 'postgresql', 'mysql', 'sqlserver'):
             return [self.connection.database_name] if self.connection.database_name else []
 
         # Databricks / Lakehouse
@@ -1418,6 +1418,46 @@ class ConnectorEngine:
         except Exception as e:
             logger.error(f"Error reading file {file_path}: {e}")
             return None
+
+    def execute_statement(self, query, params=None):
+        """Execute a DDL/DML SQL statement (Pre-SQL / Post-SQL) that does not return rows."""
+        if not self.connection.is_database:
+            raise ValueError("Cannot execute SQL statements on file connections")
+        if self.is_mocked():
+            logger.info(f"Connection is mocked. Simulating executing statement: {query[:150]}...")
+            return
+
+        db_type = str(self.connection.connection_type).lower()
+        if db_type == 'lakehouse':
+            conn = self.get_lakehouse_connection()
+            conn.rollback = lambda *args, **kwargs: None
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query)
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        elif db_type == 'db2':
+            conn = self.get_db2_pyodbc_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query)
+                conn.commit()
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        else:
+            engine = self.get_engine()
+            with engine.begin() as conn:
+                conn.execute(text(query), params or {})
 
     def execute_query(self, query, params=None):
         """Execute a SQL query and return results as DataFrame."""

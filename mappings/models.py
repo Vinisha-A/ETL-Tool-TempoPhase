@@ -67,12 +67,38 @@ class Mapping(models.Model):
     filter_condition = models.CharField(max_length=500, blank=True, null=True)
     load_mode = models.CharField(
         max_length=20,
-        choices=[('truncate', 'Full Load'), ('incremental', 'Incremental Load')],
+        choices=[
+            ('truncate', 'Full Load'),
+            ('incremental', 'Incremental Load'),
+            ('scd1', 'SCD Type 1'),
+            ('scd2', 'SCD Type 2'),
+        ],
         default='truncate'
     )
     incremental_column = models.CharField(max_length=200, blank=True, null=True)
     incremental_value = models.CharField(max_length=200, blank=True, null=True)
     batch_size = models.IntegerField(default=10000, help_text='Number of records to fetch and load per batch.')
+
+    # SCD Configuration
+    scd_business_key = models.CharField(max_length=200, blank=True, null=True)
+    scd_track_columns = models.TextField(blank=True, null=True, help_text='Comma-separated target columns to track for changes')
+    scd_effective_from = models.CharField(max_length=200, blank=True, null=True)
+    scd_effective_to = models.CharField(max_length=200, blank=True, null=True)
+    scd_active_flag = models.CharField(max_length=200, blank=True, null=True)
+
+    # Advanced Settings (Pre/Post SQL)
+    pre_sql = models.TextField(blank=True, null=True)
+    pre_sql_location = models.CharField(
+        max_length=10,
+        choices=[('source', 'Source'), ('target', 'Target')],
+        default='target'
+    )
+    post_sql = models.TextField(blank=True, null=True)
+    post_sql_location = models.CharField(
+        max_length=10,
+        choices=[('source', 'Source'), ('target', 'Target')],
+        default='target'
+    )
 
     # Metadata
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mappings')

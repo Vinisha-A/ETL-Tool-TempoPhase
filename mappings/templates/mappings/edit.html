@@ -266,8 +266,10 @@
                 <div class="form-group">
                     <label>Load Mode *</label>
                     <select name="load_mode" id="load-mode" class="form-control" onchange="toggleLoadMode()" required>
-                        <option value="truncate" {% if mapping.load_mode == 'truncate' %}selected{% endif %}>Full Load (Clear target first)</option>
+                        <option value="truncate" {% if mapping.load_mode == 'truncate' %}selected{% endif %}>Full Load</option>
                         <option value="incremental" {% if mapping.load_mode == 'incremental' %}selected{% endif %}>Incremental Load (Append new rows)</option>
+                        <option value="scd1" {% if mapping.load_mode == 'scd1' %}selected{% endif %}>SCD Type 1</option>
+                        <option value="scd2" {% if mapping.load_mode == 'scd2' %}selected{% endif %}>SCD Type 2</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -276,6 +278,8 @@
                     <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Number of records to fetch and load per batch/chunk (default: 10,000).</span>
                 </div>
             </div>
+            
+            <!-- Incremental Load Strategy Section -->
             <div id="incremental-section" style="display: none; margin-top: 16px;" class="form-row">
                 <div class="form-group">
                     <label>Incremental Column *</label>
@@ -288,6 +292,111 @@
                     <label>Starting Incremental Value (Optional)</label>
                     <input type="text" name="incremental_value" id="incremental-value" class="form-control" placeholder="e.g. 2026-08-19 or 1000" value="{{ mapping.incremental_value|default:'' }}">
                     <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Leave blank to automatically derive from the target table's maximum value.</span>
+                </div>
+            </div>
+
+            <!-- SCD Type 1 Section -->
+            <div id="scd1-section" style="display: none; margin-top: 16px;" class="form-row">
+                <div class="form-group">
+                    <label>Business Key Column *</label>
+                    <select name="scd_business_key" id="scd1-business-key" class="form-control">
+                        <option value="">-- Select Business Key --</option>
+                    </select>
+                    <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Key column used to match source and target records.</span>
+                </div>
+                <div class="form-group">
+                    <label>Columns to Track/Update *</label>
+                    <div id="scd1-track-columns-container" style="border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 10px; max-height: 150px; overflow-y: auto; background: var(--bg-input);">
+                        <span class="text-muted" style="font-size: 0.85rem;">Select target table to view columns</span>
+                    </div>
+                    <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Columns to track for changes. Unselected columns will not be updated.</span>
+                </div>
+            </div>
+
+            <!-- SCD Type 2 Section -->
+            <div id="scd2-section" style="display: none; margin-top: 16px;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Business Key Column *</label>
+                        <select name="scd_business_key" id="scd2-business-key" class="form-control">
+                            <option value="">-- Select Business Key --</option>
+                        </select>
+                        <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Key column used to match source and target records.</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Columns to Track for Changes *</label>
+                        <div id="scd2-track-columns-container" style="border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 10px; max-height: 150px; overflow-y: auto; background: var(--bg-input);">
+                            <span class="text-muted" style="font-size: 0.85rem;">Select target table to view columns</span>
+                        </div>
+                        <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Columns that trigger a new version when values change.</span>
+                    </div>
+                </div>
+                <div class="form-row" style="margin-top: 16px;">
+                    <div class="form-group">
+                        <label>Effective From Column *</label>
+                        <select name="scd_effective_from" id="scd2-effective-from" class="form-control">
+                            <option value="">-- Select Effective From --</option>
+                        </select>
+                        <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Stores version start date/time.</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Effective To Column *</label>
+                        <select name="scd_effective_to" id="scd2-effective-to" class="form-control">
+                            <option value="">-- Select Effective To --</option>
+                        </select>
+                        <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Stores version end date/time.</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Current/Active Flag Column *</label>
+                        <select name="scd_active_flag" id="scd2-active-flag" class="form-control">
+                            <option value="">-- Select Active Flag --</option>
+                        </select>
+                        <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">Flag indicating current active version (e.g. True/False, Y/N).</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advanced Settings Section (Pre-SQL / Post-SQL) -->
+    <div class="card mb-24" style="box-shadow: none; border: 1.5px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-lg);">
+        <div class="card-header" style="background: var(--primary-subtle); border-bottom: 1.5px solid var(--border-light); padding: 16px 20px; cursor: pointer;" onclick="toggleAdvancedSettings()">
+            <h3 style="font-size: 1.1rem; color: var(--primary); font-weight: 600; margin: 0; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span><i class="fas fa-sliders-h"></i> Advanced Settings (Pre-SQL / Post-SQL)</span>
+                <i id="advanced-settings-chevron" class="fas fa-chevron-down text-muted" style="transition: transform 0.2s;"></i>
+            </h3>
+        </div>
+        <div id="advanced-settings-body" style="display: none; padding: 20px;">
+            <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+                <!-- Pre-SQL -->
+                <div style="flex: 1; min-width: 280px;">
+                    <div class="form-group">
+                        <label style="font-weight: 500;">Pre-SQL</label>
+                        <textarea name="pre_sql" id="pre-sql" class="form-control" rows="4" style="font-family: monospace; font-size: 0.88rem;" placeholder="e.g. DELETE FROM target_table WHERE region = 'US'">{{ mapping.pre_sql|default:'' }}</textarea>
+                        <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">SQL query to execute before loading data.</span>
+                    </div>
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label style="font-weight: 500;">Execute Pre-SQL On</label>
+                        <select name="pre_sql_location" id="pre-sql-location" class="form-control">
+                            <option value="target" {% if mapping.pre_sql_location == 'target' %}selected{% endif %}>Target Connection</option>
+                            <option value="source" {% if mapping.pre_sql_location == 'source' %}selected{% endif %}>Source Connection</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Post-SQL -->
+                <div style="flex: 1; min-width: 280px;">
+                    <div class="form-group">
+                        <label style="font-weight: 500;">Post-SQL</label>
+                        <textarea name="post_sql" id="post-sql" class="form-control" rows="4" style="font-family: monospace; font-size: 0.88rem;" placeholder="e.g. UPDATE audit_log SET status = 'DONE'">{{ mapping.post_sql|default:'' }}</textarea>
+                        <span class="text-muted" style="font-size: 0.8rem; margin-top: 4px; display: block;">SQL query to execute after a successful load.</span>
+                    </div>
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label style="font-weight: 500;">Execute Post-SQL On</label>
+                        <select name="post_sql_location" id="post-sql-location" class="form-control">
+                            <option value="target" {% if mapping.post_sql_location == 'target' %}selected{% endif %}>Target Connection</option>
+                            <option value="source" {% if mapping.post_sql_location == 'source' %}selected{% endif %}>Source Connection</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
@@ -518,7 +627,6 @@ document.addEventListener('DOMContentLoaded', async function() {
                                 opt.textContent = `${col.name} (${col.type})`;
                                 filterSelect.appendChild(opt);
                             });
-                            // Restore value
                             const filterVal = "{{ mapping.filter_column|default:'' }}";
                             if (filterVal) filterSelect.value = filterVal;
                         }
@@ -530,16 +638,140 @@ document.addEventListener('DOMContentLoaded', async function() {
                                 opt.textContent = `${col.name} (${col.type})`;
                                 incSelect.appendChild(opt);
                             });
-                            // Restore value
                             const incVal = "{{ mapping.incremental_column|default:'' }}";
                             if (incVal) incSelect.value = incVal;
                         }
                     });
             };
             sourceTable.addEventListener('change', loadCols);
-            // Execute once columns are loaded dynamically
             setTimeout(loadCols, 1500);
         }
+
+        // Bind target table columns loading (for SCD fields)
+        const targetTable = document.getElementById('target-table');
+        const loadTargetCols = function() {
+            const connId = document.getElementById('target-connection').value;
+            const schema = document.getElementById('target-schema').value;
+            const catalog = document.getElementById('target-catalog') ? document.getElementById('target-catalog').value : '';
+            const table = targetTable ? targetTable.value : '';
+            if (!connId || !table) return;
+
+            let url = `/connections/api/columns/?connection_id=${connId}&schema=${encodeURIComponent(schema)}&table=${encodeURIComponent(table)}`;
+            if (catalog) url += `&catalog=${encodeURIComponent(catalog)}`;
+
+            fetch(url)
+                .then(r => r.json())
+                .then(data => {
+                    const bKeySelects = [document.getElementById('scd1-business-key'), document.getElementById('scd2-business-key')];
+                    const effFromSelect = document.getElementById('scd2-effective-from');
+                    const effToSelect = document.getElementById('scd2-effective-to');
+                    const activeFlagSelect = document.getElementById('scd2-active-flag');
+                    const scd1TrackContainer = document.getElementById('scd1-track-columns-container');
+                    const scd2TrackContainer = document.getElementById('scd2-track-columns-container');
+
+                    bKeySelects.forEach(sel => {
+                        if (sel) {
+                            const prevVal = sel.value;
+                            sel.innerHTML = '<option value="">-- Select Business Key --</option>';
+                            data.columns.forEach(col => {
+                                const opt = document.createElement('option');
+                                opt.value = col.name;
+                                opt.textContent = `${col.name} (${col.type})`;
+                                sel.appendChild(opt);
+                            });
+                            if (prevVal) sel.value = prevVal;
+                        }
+                    });
+
+                    if (effFromSelect) {
+                        const prevVal = effFromSelect.value;
+                        effFromSelect.innerHTML = '<option value="">-- Select Effective From --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            effFromSelect.appendChild(opt);
+                        });
+                        if (prevVal) effFromSelect.value = prevVal;
+                    }
+
+                    if (effToSelect) {
+                        const prevVal = effToSelect.value;
+                        effToSelect.innerHTML = '<option value="">-- Select Effective To --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            effToSelect.appendChild(opt);
+                        });
+                        if (prevVal) effToSelect.value = prevVal;
+                    }
+
+                    if (activeFlagSelect) {
+                        const prevVal = activeFlagSelect.value;
+                        activeFlagSelect.innerHTML = '<option value="">-- Select Active Flag --</option>';
+                        data.columns.forEach(col => {
+                            const opt = document.createElement('option');
+                            opt.value = col.name;
+                            opt.textContent = `${col.name} (${col.type})`;
+                            activeFlagSelect.appendChild(opt);
+                        });
+                        if (prevVal) activeFlagSelect.value = prevVal;
+                    }
+
+                    [
+                        { container: scd1TrackContainer, prefix: 'scd1' },
+                        { container: scd2TrackContainer, prefix: 'scd2' }
+                    ].forEach(({ container, prefix }) => {
+                        if (container) {
+                            const checkedVals = Array.from(container.querySelectorAll('input:checked')).map(cb => cb.value);
+                            container.innerHTML = '';
+                            data.columns.forEach(col => {
+                                const div = document.createElement('div');
+                                div.style.display = 'flex';
+                                div.style.alignItems = 'center';
+                                div.style.gap = '8px';
+                                div.style.padding = '4px 0';
+                                const isChecked = checkedVals.includes(col.name) ? 'checked' : '';
+                                div.innerHTML = `
+                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; font-size: 0.85rem; font-weight: 500;">
+                                        <input type="checkbox" name="scd_track_columns" value="${col.name}" class="${prefix}-track-col-cb" ${isChecked}>
+                                        <span>${col.name} <span style="font-size: 0.75rem; color: var(--text-muted);">(${col.type})</span></span>
+                                    </label>
+                                `;
+                                container.appendChild(div);
+                            });
+                        }
+                    });
+
+                    // Restore database values
+                    const dbBk = "{{ mapping.scd_business_key|default:'' }}";
+                    if (dbBk) {
+                        bKeySelects.forEach(sel => { if (sel) sel.value = dbBk; });
+                    }
+                    const dbEffFrom = "{{ mapping.scd_effective_from|default:'' }}";
+                    if (dbEffFrom && effFromSelect) effFromSelect.value = dbEffFrom;
+                    const dbEffTo = "{{ mapping.scd_effective_to|default:'' }}";
+                    if (dbEffTo && effToSelect) effToSelect.value = dbEffTo;
+                    const dbActive = "{{ mapping.scd_active_flag|default:'' }}";
+                    if (dbActive && activeFlagSelect) activeFlagSelect.value = dbActive;
+
+                    const dbTrackColsStr = "{{ mapping.scd_track_columns|default:'' }}";
+                    if (dbTrackColsStr) {
+                        const dbTrackCols = dbTrackColsStr.split(',').map(c => c.trim());
+                        document.querySelectorAll('.scd1-track-col-cb, .scd2-track-col-cb').forEach(cb => {
+                            if (dbTrackCols.includes(cb.value)) {
+                                cb.checked = true;
+                            }
+                        });
+                    }
+                });
+        };
+        if (targetTable) {
+            targetTable.addEventListener('change', loadTargetCols);
+            setTimeout(loadTargetCols, 1500);
+        }
+
     } catch (e) {
         console.error("Failed to restore pipeline details", e);
         showToast("Failed to restore pipeline details", "error");
@@ -570,12 +802,54 @@ function toggleQueryType() {
 function toggleLoadMode() {
     const mode = document.getElementById('load-mode').value;
     const incSection = document.getElementById('incremental-section');
+    const scd1Section = document.getElementById('scd1-section');
+    const scd2Section = document.getElementById('scd2-section');
+
+    incSection.style.display = 'none';
+    scd1Section.style.display = 'none';
+    scd2Section.style.display = 'none';
+
+    disableInputs(incSection, true);
+    disableInputs(scd1Section, true);
+    disableInputs(scd2Section, true);
+
     if (mode === 'incremental') {
         incSection.style.display = 'flex';
+        disableInputs(incSection, false);
         document.getElementById('incremental-column').required = true;
+    } else if (mode === 'scd1') {
+        scd1Section.style.display = 'flex';
+        disableInputs(scd1Section, false);
+        document.getElementById('scd1-business-key').required = true;
+    } else if (mode === 'scd2') {
+        scd2Section.style.display = 'block';
+        disableInputs(scd2Section, false);
+        document.getElementById('scd2-business-key').required = true;
+        document.getElementById('scd2-effective-from').required = true;
+        document.getElementById('scd2-effective-to').required = true;
+        document.getElementById('scd2-active-flag').required = true;
+    }
+}
+
+function disableInputs(container, disable) {
+    if (!container) return;
+    container.querySelectorAll('input, select').forEach(el => {
+        el.disabled = disable;
+        if (disable) {
+            el.required = false;
+        }
+    });
+}
+
+function toggleAdvancedSettings() {
+    const body = document.getElementById('advanced-settings-body');
+    const chevron = document.getElementById('advanced-settings-chevron');
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        chevron.style.transform = 'rotate(180deg)';
     } else {
-        incSection.style.display = 'none';
-        document.getElementById('incremental-column').required = false;
+        body.style.display = 'none';
+        chevron.style.transform = 'rotate(0deg)';
     }
 }
 

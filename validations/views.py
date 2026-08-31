@@ -159,6 +159,8 @@ def api_validate_pipeline(request, mapping_id):
                             check_query = f"SELECT * FROM ({query}) WHERE ROWNUM = 0"
                         elif db_type == 'db2':
                             check_query = f"SELECT * FROM ({query}) AS temp FETCH FIRST 0 ROWS ONLY"
+                        elif db_type in ('mssql', 'sqlserver'):
+                            check_query = f"SELECT TOP 0 * FROM ({query}) AS temp"
                         else:
                             check_query = f"SELECT * FROM ({query}) LIMIT 0"
                         source_engine.execute_query(check_query)
@@ -264,6 +266,53 @@ def api_validate_pipeline(request, mapping_id):
             has_critical_error = True
         else:
             validations.append({'name': 'Filter Column Check', 'status': 'success', 'message': f"Filter column '{mapping.filter_column}' verified."})
+
+    # 8. SCD Configuration Validation
+    if mapping.load_mode in ('scd1', 'scd2'):
+        if not mapping.scd_business_key:
+            validations.append({'name': 'SCD Business Key', 'status': 'error', 'message': 'Business key is not specified for SCD strategy.'})
+            has_critical_error = True
+        else:
+            if target_cols_meta:
+                if mapping.scd_business_key.lower() not in tgt_cols_dict:
+                    validations.append({'name': 'SCD Business Key Existence', 'status': 'error', 'message': f"Business key '{mapping.scd_business_key}' does not exist in target table."})
+                    has_critical_error = True
+                else:
+                    validations.append({'name': 'SCD Business Key', 'status': 'success', 'message': f"Business key '{mapping.scd_business_key}' exists in target."})
+
+        # Columns to track
+        track_cols = [c.strip() for c in (mapping.scd_track_columns or '').split(',') if c.strip()]
+        if not track_cols:
+            validations.append({'name': 'SCD Tracked Columns', 'status': 'error', 'message': 'No columns specified to track/update for SCD.'})
+            has_critical_error = True
+        else:
+            invalid_track_cols = []
+            if target_cols_meta:
+                for col in track_cols:
+                    if col.lower() not in tgt_cols_dict:
+                        invalid_track_cols.append(col)
+            if invalid_track_cols:
+                validations.append({'name': 'SCD Tracked Columns Existence', 'status': 'error', 'message': f"Tracked columns do not exist in target: {', '.join(invalid_track_cols)}"})
+                has_critical_error = True
+            else:
+                validations.append({'name': 'SCD Tracked Columns', 'status': 'success', 'message': f'{len(track_cols)} tracked columns verified.'})
+
+        # SCD 2 specific columns
+        if mapping.load_mode == 'scd2':
+            for col_name, field_label in [
+                (mapping.scd_effective_from, 'Effective From'),
+                (mapping.scd_effective_to, 'Effective To'),
+                (mapping.scd_active_flag, 'Current/Active Flag')
+            ]:
+                if not col_name:
+                    validations.append({'name': f'SCD {field_label}', 'status': 'error', 'message': f'{field_label} column is not specified.'})
+                    has_critical_error = True
+                elif target_cols_meta:
+                    if col_name.lower() not in tgt_cols_dict:
+                        validations.append({'name': f'SCD {field_label} Existence', 'status': 'error', 'message': f"{field_label} column '{col_name}' does not exist in target table."})
+                        has_critical_error = True
+                    else:
+                        validations.append({'name': f'SCD {field_label}', 'status': 'success', 'message': f"{field_label} column '{col_name}' exists in target."})
 
     return JsonResponse({
         'success': not has_critical_error,

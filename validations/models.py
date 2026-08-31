@@ -45,6 +45,11 @@ class ETLRun(models.Model):
 
     records_extracted = models.IntegerField(default=0)
     records_loaded = models.IntegerField(default=0)
+    records_inserted = models.IntegerField(default=0)
+    records_updated = models.IntegerField(default=0)
+    records_failed = models.IntegerField(default=0)
+    pre_sql_status = models.CharField(max_length=50, blank=True, null=True, help_text="Status of Pre-SQL execution")
+    post_sql_status = models.CharField(max_length=50, blank=True, null=True, help_text="Status of Post-SQL execution")
 
     error_message = models.TextField(blank=True)
     parameters = models.JSONField(default=dict, blank=True)
@@ -145,6 +150,8 @@ class ETLResult(models.Model):
             return f"Load Mode: {self.source_value}"
         elif op == 'loading':
             return f"Loaded: {self.source_value} rows"
+        elif op in ('pre_sql', 'post_sql'):
+            return f"Connection: {self.source_value.title()}"
 
         op_map = {
             'count': 'Count',
@@ -172,7 +179,7 @@ class ETLResult(models.Model):
     @property
     def target_op_display(self):
         op = self.operation
-        if op in ('extraction', 'target_preparation', 'loading'):
+        if op in ('extraction', 'target_preparation', 'loading', 'pre_sql', 'post_sql'):
             return f"Status: {self.target_value}"
 
         op_map = {
