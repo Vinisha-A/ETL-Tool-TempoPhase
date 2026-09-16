@@ -115,6 +115,13 @@ class Mapping(models.Model):
     def __str__(self):
         return f"{self.name}: {self.source_table} → {self.target_table}"
 
+    @property
+    def folder(self):
+        try:
+            return self.group_assignment.group
+        except Exception:
+            return None
+
 
 class ColumnMapping(models.Model):
     """Maps individual columns between source and target."""
@@ -175,16 +182,51 @@ class ETLStep(models.Model):
 
 
 class PipelineGroup(models.Model):
-    """User-defined groups for categorizing pipelines."""
-    name = models.CharField(max_length=100, unique=True)
+    """Hierarchical folders for organizing pipelines."""
+    name = models.CharField(max_length=100)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subfolders')
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ['parent', 'name']
 
     def __str__(self):
         return self.name
 
+    def get_path(self):
+        """Returns ordered list of folder objects from root to self for breadcrumb navigation."""
+        path = []
+        curr = self
+        visited = set()
+        while curr and curr.id not in visited:
+            visited.add(curr.id)
+            path.append(curr)
+            curr = curr.parent
+        return list(reversed(path))
+
+    def get_full_path_name(self):
+        """Returns string representation of full folder path, e.g. 'Marketing / Campaigns'."""
+        return " / ".join(f.name for f in self.get_path())
+
+    def get_all_descendant_ids(self):
+        """Returns list of IDs of this folder and all nested subfolders recursively."""
+        descendants = [self.id]
+        to_process = [self]
+        while to_process:
+            current = to_process.pop(0)
+            children = list(current.subfolders.all())
+            for child in children:
+                descendants.append(child.id)
+                to_process.append(child)
+        return descendants
+
+
+PipelineFolder = PipelineGroup
+
 
 class PipelineGroupAssignment(models.Model):
-    """Assigns a pipeline (Mapping) to a custom PipelineGroup."""
+    """Assigns a pipeline (Mapping) to a custom PipelineFolder/PipelineGroup."""
     group = models.ForeignKey(PipelineGroup, on_delete=models.CASCADE, related_name='assignments')
     mapping = models.OneToOneField(Mapping, on_delete=models.CASCADE, related_name='group_assignment')
     assigned_at = models.DateTimeField(auto_now_add=True)
@@ -193,4 +235,10 @@ class PipelineGroupAssignment(models.Model):
         return f"{self.mapping.name} -> {self.group.name}"
 
 
+PipelineFolderAssignment = PipelineGroupAssignment
 
+# ETL Job Aliases for clear terminology
+ETLJob = Mapping
+ETLJobFolder = PipelineGroup
+ETLFolder = PipelineGroup
+ETLFolderAssignment = PipelineGroupAssignment

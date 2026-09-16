@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Pipelines{% endblock %}
-{% block page_title %}Source-Target Pipelines{% endblock %}
+{% block title %}ETL Jobs{% endblock %}
+{% block page_title %}ETL Jobs{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -10,6 +10,9 @@
     }
     .pipeline-checkbox-item:hover {
         background: var(--bg-hover);
+    }
+    .pipeline-checkbox-item label {
+        user-select: none;
     }
     #pipelines-checkbox-list::-webkit-scrollbar {
         width: 6px;
@@ -26,25 +29,120 @@
         align-items: center;
         gap: 6px;
     }
+    .folder-card {
+        display: flex;
+        flex-direction: column;
+        background: #ffffff;
+        border: 1px solid var(--border-medium);
+        border-radius: var(--radius-md);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        overflow: hidden;
+    }
+    .folder-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--primary) !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.09) !important;
+    }
+    .folder-card-body {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+        text-decoration: none;
+        flex: 1;
+    }
+    .folder-card-footer {
+        display: flex;
+        border-top: 1px solid var(--border-light);
+    }
+    .folder-card-action {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        padding: 7px 0;
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        background: transparent;
+        border: none;
+        text-decoration: none;
+        color: var(--text-secondary);
+        transition: background 0.12s ease, color 0.12s ease;
+    }
+    .folder-card-action + .folder-card-action {
+        border-left: 1px solid var(--border-light);
+    }
+    .folder-card-action:hover {
+        background: var(--bg-hover);
+        color: var(--primary);
+    }
+    .folder-card-action.danger:hover {
+        background: #FEF2F2;
+        color: var(--danger);
+    }
+    .breadcrumb-link:hover {
+        color: var(--primary) !important;
+        text-decoration: underline !important;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+<!-- Folder Breadcrumbs -->
+<div class="folder-breadcrumbs" style="display: flex; align-items: center; gap: 8px; font-size: 0.875rem; margin-bottom: 14px; flex-wrap: wrap;">
+    {% for bc in breadcrumbs %}
+        {% if not forloop.first %}
+            <span style="color: var(--text-muted);"><i class="fas fa-chevron-right" style="font-size: 0.65rem;"></i></span>
+        {% endif %}
+        {% if bc.is_active %}
+            <span style="font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; background: var(--bg-card); padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                {% if forloop.first %}
+                    <i class="fas fa-layer-group" style="color: var(--primary);"></i>
+                {% else %}
+                    <i class="fas fa-folder-open" style="color: #F59E0B;"></i>
+                {% endif %}
+                {{ bc.name }}
+            </span>
+        {% else %}
+            <a href="{{ bc.url }}" style="color: var(--text-secondary); text-decoration: none; font-weight: 500; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: var(--radius-sm);" class="breadcrumb-link">
+                {% if forloop.first %}
+                    <i class="fas fa-layer-group" style="color: var(--text-muted);"></i>
+                {% else %}
+                    <i class="fas fa-folder" style="color: #F59E0B;"></i>
+                {% endif %}
+                {{ bc.name }}
+            </a>
+        {% endif %}
+    {% endfor %}
+</div>
+
 <div class="card" style="width: 100%;">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-bottom: 1px solid var(--border-light); padding-bottom: 16px;">
         <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
             <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0;">
-                <i class="fas fa-project-diagram" style="color: var(--primary);"></i> 
-                {{ selected_group_name }} ({{ mappings|length }})
+                {% if current_folder %}
+                    <i class="fas fa-folder-open" style="color: #F59E0B;"></i> 
+                {% else %}
+                    <i class="fas fa-layer-group" style="color: var(--primary);"></i> 
+                {% endif %}
+                {{ selected_folder_name }} ({{ mappings|length }} ETL Job{{ mappings|length|pluralize }})
             </h2>
             
             {% if selected_group_is_custom and user_profile.role != 'auditor' %}
             <div style="display: flex; gap: 8px; align-items: center;">
-                <button onclick="openManagePipelinesModal({{ selected_group_id }}, '{{ selected_group_name|escapejs }}', {{ selected_group_pipelines_ids|safe }})" class="btn btn-sm btn-outline btn-icon-label" style="padding: 6px 12px; font-size: 0.75rem; border-color: var(--primary); color: var(--primary); background: transparent; cursor: pointer; border-radius: var(--radius-sm);">
-                    <i class="fas fa-tasks"></i> Manage Group
+                <button onclick="openManagePipelinesModal({{ selected_folder_id }}, '{{ selected_folder_name|escapejs }}', {{ selected_group_pipelines_ids|safe }})" class="btn btn-sm btn-outline btn-icon-label" style="padding: 6px 12px; font-size: 0.75rem; border-color: var(--primary); color: var(--primary); background: transparent; cursor: pointer; border-radius: var(--radius-sm);" title="Assign or remove ETL jobs in this folder">
+                    <i class="fas fa-tasks"></i> Manage ETL Jobs
                 </button>
-                <button onclick="deleteGroup({{ selected_group_id }}, '{{ selected_group_name|escapejs }}')" class="btn btn-sm btn-outline btn-icon-label" style="padding: 6px 12px; font-size: 0.75rem; border-color: var(--danger); color: var(--danger); background: transparent; cursor: pointer; border-radius: var(--radius-sm);">
-                    <i class="fas fa-trash"></i> Delete Group
+                <button onclick="openRenameFolderModal({{ selected_folder_id }}, '{{ selected_folder_name|escapejs }}')" class="btn btn-sm btn-outline btn-icon-label" style="padding: 6px 12px; font-size: 0.75rem; border-color: var(--border-medium); color: var(--text-primary); background: transparent; cursor: pointer; border-radius: var(--radius-sm);" title="Rename this folder">
+                    <i class="fas fa-edit"></i> Rename
+                </button>
+                <button onclick="deleteFolder({{ selected_folder_id }}, '{{ selected_folder_name|escapejs }}')" class="btn btn-sm btn-outline btn-icon-label" style="padding: 6px 12px; font-size: 0.75rem; border-color: var(--danger); color: var(--danger); background: transparent; cursor: pointer; border-radius: var(--radius-sm);" title="Delete this folder">
+                    <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
             {% endif %}
@@ -52,8 +150,8 @@
         
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <form method="get" action="" style="display: flex; gap: 8px; align-items: center; margin: 0;">
-                <input type="hidden" name="group" value="{{ selected_group }}">
-                <input type="text" name="query" class="form-control" placeholder="Search pipelines..." value="{{ query|default:'' }}" style="width: 220px; height: 38px; border-radius: 6px; margin: 0;">
+                <input type="hidden" name="folder" value="{{ selected_folder }}">
+                <input type="text" name="query" class="form-control" placeholder="Search ETL jobs..." value="{{ query|default:'' }}" style="width: 220px; height: 38px; border-radius: 6px; margin: 0;">
                 
                 <input type="text" name="created_by_name" list="creators-list" class="form-control" placeholder="Filter by creator..." value="{{ selected_creator_name|default:'' }}" style="width: 185px; height: 38px; border-radius: 6px; margin: 0; padding: 4px 8px; font-size: 14px; border: 1px solid var(--border-medium); background: var(--bg-card); color: var(--text-primary);" onchange="this.form.submit()">
                 <datalist id="creators-list">
@@ -66,47 +164,85 @@
                     <i class="fas fa-search" style="margin-right: 6px;"></i> Search
                 </button>
                 {% if query or selected_creator_name %}
-                <a href="?group={{ selected_group }}" class="btn btn-secondary" style="height: 38px; display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #CBD5E1; color: #1E293B; border-radius: 6px; padding: 0 16px; font-weight: 500; font-size: 14px; text-decoration: none;">Clear</a>
+                <a href="?folder={{ selected_folder }}" class="btn btn-secondary" style="height: 38px; display: inline-flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #CBD5E1; color: #1E293B; border-radius: 6px; padding: 0 16px; font-weight: 500; font-size: 14px; text-decoration: none;">Clear</a>
                 {% endif %}
             </form>
             {% if user_profile.role != 'auditor' %}
-            <button onclick="openAddGroupModal()" class="btn btn-secondary btn-sm btn-icon-label" style="height: 38px; background: white; border: 1px solid var(--border-medium); color: var(--text-secondary); cursor: pointer;">
-                <i class="fas fa-folder-plus"></i> Add Group
+            <button onclick="openAddFolderModal({{ selected_folder_id|default:'null' }})" class="btn btn-secondary btn-sm btn-icon-label" style="height: 38px; background: white; border: 1px solid var(--border-medium); color: var(--text-secondary); cursor: pointer;">
+                <i class="fas fa-folder-plus"></i> {% if current_folder %}New Subfolder{% else %}New Folder{% endif %}
             </button>
-            <a href="{% url 'mappings:create' %}{% if selected_group %}?group={{ selected_group }}{% endif %}" class="btn btn-primary btn-sm btn-icon-label" style="height: 38px;">
-                <i class="fas fa-plus"></i> New Pipeline
+            <a href="{% url 'mappings:create' %}{% if selected_folder_id %}?folder={{ selected_folder_id }}{% endif %}" class="btn btn-primary btn-sm btn-icon-label" style="height: 38px;">
+                <i class="fas fa-plus"></i> New ETL Job
             </a>
             {% endif %}
         </div>
     </div>
+
+    <!-- Subfolders Explorer Cards Section -->
+    {% if subfolders %}
+    <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-light); background: #F8FAFC;">
+        <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+            <i class="fas fa-folder" style="color: #F59E0B;"></i> Subfolders ({{ subfolders|length }})
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px;">
+            {% for sf in subfolders %}
+            <div class="folder-card">
+                <a href="?folder={{ sf.id }}" class="folder-card-body">
+                    <div style="font-size: 1.6rem; color: #F59E0B; flex-shrink: 0;">
+                        <i class="fas fa-folder"></i>
+                    </div>
+                    <div style="flex-grow: 1; overflow: hidden;">
+                        <div style="font-weight: 600; font-size: 0.875rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ sf.name }}">
+                            {{ sf.name }}
+                        </div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">
+                            {{ sf.total_count }} ETL job{{ sf.total_count|pluralize }}
+                        </div>
+                    </div>
+                </a>
+                <div class="folder-card-footer">
+                    <a href="?folder={{ sf.id }}" class="folder-card-action">
+                        <i class="fas fa-folder-open" style="font-size: 0.7rem;"></i> Open
+                    </a>
+                    {% if user_profile.role != 'auditor' %}
+                    <button type="button" class="folder-card-action danger" onclick="deleteFolder({{ sf.id }}, '{{ sf.name|escapejs }}')">
+                        <i class="fas fa-trash" style="font-size: 0.7rem;"></i> Delete
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
     
     <div class="card-body p-0">
         {% if not mappings %}
             <div class="empty-state" style="padding: 64px 24px; text-align: center;">
                 <div class="empty-icon" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 16px;"><i class="fas fa-project-diagram"></i></div>
-                <h3 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">No Pipelines</h3>
+                <h3 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">No ETL Jobs</h3>
                 <p style="color: var(--text-secondary); max-width: 420px; margin: 0 auto 16px; font-size: 0.85rem;">
                     {% if query %}
-                        No pipelines matching "{{ query }}" in this group.
+                        No ETL jobs matching "{{ query }}" in this folder.
                     {% else %}
-                        {% if selected_group == 'all' %}
-                            Create your first source-target pipeline to perform ETL loads.
+                        {% if selected_folder == 'all' %}
+                            Create your first ETL job to perform source-to-target loads.
                         {% elif selected_group_is_custom %}
-                            There are no pipelines assigned to this custom group.
+                            There are no ETL jobs directly inside this folder.
                         {% else %}
-                            There are no pipelines matching the naming convention prefix for this group.
+                            There are no unorganized ETL jobs.
                         {% endif %}
                     {% endif %}
                 </p>
                 <div style="display: flex; gap: 12px; justify-content: center; align-items: center;">
                     {% if selected_group_is_custom and user_profile.role != 'auditor' and not query %}
-                        <button onclick="openManagePipelinesModal({{ selected_group_id }}, '{{ selected_group_name|escapejs }}', {{ selected_group_pipelines_ids|safe }})" class="btn btn-primary btn-icon-label btn-sm">
-                            <i class="fas fa-plus"></i> Assign Pipelines
+                        <button onclick="openManagePipelinesModal({{ selected_folder_id }}, '{{ selected_folder_name|escapejs }}', {{ selected_group_pipelines_ids|safe }})" class="btn btn-primary btn-icon-label btn-sm">
+                            <i class="fas fa-plus"></i> Assign ETL Jobs
                         </button>
                     {% endif %}
                     {% if user_profile.role != 'auditor' and not query %}
-                    <a href="{% url 'mappings:create' %}{% if selected_group %}?group={{ selected_group }}{% endif %}" class="btn btn-secondary btn-sm btn-icon-label" style="background: white; border: 1px solid var(--border-medium); color: var(--text-secondary);">
-                        <i class="fas fa-plus"></i> Create Pipeline
+                    <a href="{% url 'mappings:create' %}{% if selected_folder_id %}?folder={{ selected_folder_id }}{% endif %}" class="btn btn-secondary btn-sm btn-icon-label" style="background: white; border: 1px solid var(--border-medium); color: var(--text-secondary);">
+                        <i class="fas fa-plus"></i> Create ETL Job
                     </a>
                     {% endif %}
                 </div>
@@ -153,33 +289,32 @@
                                 <div class="fw-500" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ mapping.target_connection.name }}">{{ mapping.target_connection.name }}</div>
                                 <div class="text-muted" style="font-size:0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ mapping.target_schema|default:'' }}{% if mapping.target_schema %}.{% endif %}{{ mapping.target_table }}">{{ mapping.target_schema|default:"" }}{% if mapping.target_schema %}.{% endif %}{{ mapping.target_table }}</div>
                             </td>
-                            <td style="padding: 12px 10px; font-size: 0.825rem; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ mapping.created_by.get_full_name|default:mapping.created_by.username }}">
-                                {{ mapping.created_by.get_full_name|default:mapping.created_by.username }}
+                            <td style="padding: 12px 10px; font-size: 0.825rem; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{% if mapping.created_by %}{{ mapping.created_by.get_full_name|default:mapping.created_by.username }}{% else %}-{% endif %}">
+                                {% if mapping.created_by %}{{ mapping.created_by.get_full_name|default:mapping.created_by.username }}{% else %}-{% endif %}
                             </td>
-                            <td style="padding: 12px 10px; font-size: 0.825rem; vertical-align: middle; white-space: nowrap;">
-                                {{ mapping.created_at|date:"Y-m-d H:i" }}
+                            <td style="padding: 12px 10px; font-size: 0.825rem; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ mapping.created_at|date:'M d, Y H:i' }}">
+                                {{ mapping.created_at|date:"M d, Y" }}
                             </td>
-                            <td style="padding: 12px 10px; font-size: 0.825rem; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{% if mapping.modified_by %}{{ mapping.modified_by.get_full_name|default:mapping.modified_by.username }}{% else %}{{ mapping.created_by.get_full_name|default:mapping.created_by.username }}{% endif %}">
-                                {% if mapping.modified_by %}
-                                    {{ mapping.modified_by.get_full_name|default:mapping.modified_by.username }}
-                                {% else %}
-                                    {{ mapping.created_by.get_full_name|default:mapping.created_by.username }}
-                                {% endif %}
+                            <td style="padding: 12px 10px; font-size: 0.825rem; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{% if mapping.modified_by %}{{ mapping.modified_by.get_full_name|default:mapping.modified_by.username }}{% else %}-{% endif %}">
+                                {% if mapping.modified_by %}{{ mapping.modified_by.get_full_name|default:mapping.modified_by.username }}{% else %}-{% endif %}
                             </td>
-                            <td style="padding: 12px 10px; font-size: 0.825rem; vertical-align: middle; white-space: nowrap;">
-                                {{ mapping.updated_at|date:"Y-m-d H:i" }}
+                            <td style="padding: 12px 10px; font-size: 0.825rem; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ mapping.updated_at|date:'M d, Y H:i' }}">
+                                {{ mapping.updated_at|date:"M d, Y" }}
                             </td>
-                            <td style="padding: 12px 10px; font-size: 0.825rem; vertical-align: middle; text-align: center;">
-                                <div style="display: flex; gap: 4px; justify-content: center;">
-                                    <a href="{% url 'mappings:detail' mapping.id %}" class="btn btn-sm btn-secondary" title="View Pipeline Details" style="padding: 6px 8px; font-size: 0.75rem;">
+                            <td style="padding: 12px 10px; font-size: 0.825rem; text-align: center; vertical-align: middle; white-space: nowrap;">
+                                <div class="action-buttons" style="display: flex; gap: 4px; justify-content: center;">
+                                    <a href="{% url 'mappings:detail' mapping.id %}" class="btn btn-sm btn-outline btn-icon" title="View Details" style="padding: 4px 6px; font-size: 0.75rem; border-color: var(--border-medium); color: var(--text-secondary); background: transparent; cursor: pointer;">
                                         <i class="fas fa-eye"></i>
                                     </a>
                                     {% if user_profile.role != 'auditor' %}
-                                    <a href="{% url 'mappings:edit' mapping.id %}" class="btn btn-sm btn-outline" title="Edit Pipeline" style="padding: 6px 8px; font-size: 0.75rem;">
+                                    <a href="{% url 'mappings:edit' mapping.id %}" class="btn btn-sm btn-outline btn-icon" title="Edit ETL Job" style="padding: 4px 6px; font-size: 0.75rem; border-color: var(--border-medium); color: var(--text-secondary); background: transparent; cursor: pointer;">
                                         <i class="fas fa-edit"></i>
                                     </a>
-                                    <button class="btn btn-sm btn-primary" onclick="triggerETL({{ mapping.id }})" style="padding: 6px 8px; font-size: 0.75rem;">
+                                    <button type="button" class="btn btn-sm btn-outline btn-icon" title="Trigger Run" onclick="openTriggerModal({{ mapping.id }}, '{{ mapping.name|escapejs }}', '{{ mapping.load_mode }}')" style="padding: 4px 6px; font-size: 0.75rem; border-color: var(--primary); color: var(--primary); background: transparent; cursor: pointer;">
                                         <i class="fas fa-play"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline btn-icon text-danger" title="Delete ETL Job" onclick="confirmDeleteMapping({{ mapping.id }}, '{{ mapping.name|escapejs }}')" style="padding: 4px 6px; font-size: 0.75rem; border-color: var(--border-medium); color: var(--danger); background: transparent; cursor: pointer;">
+                                        <i class="fas fa-trash"></i>
                                     </button>
                                     {% endif %}
                                 </div>
@@ -193,24 +328,60 @@
     </div>
 </div>
 
-<!-- Create Group Modal -->
-<div id="add-group-modal" class="modal-overlay">
-    <div class="modal" style="padding: 28px; position: relative;">
+<!-- Create Folder Modal -->
+<div id="add-folder-modal" class="modal-overlay">
+    <div class="modal" style="padding: 28px; position: relative; max-width: 520px; width: 90%;">
         <div class="modal-header" style="padding: 0 0 16px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center;">
-            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-primary);">Create New Pipeline Group</h3>
-            <button type="button" class="modal-close" onclick="closeAddGroupModal()" style="border: none; background: transparent; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+            <h3 id="add-folder-modal-title" style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-primary);">Create New Folder</h3>
+            <button type="button" class="modal-close" onclick="closeAddFolderModal()" style="border: none; background: transparent; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
         </div>
         <div class="modal-body" style="padding: 20px 0 0;">
-            <form id="create-group-form" onsubmit="submitCreateGroup(event)">
+            <form id="create-folder-form" onsubmit="submitCreateFolder(event)">
                 {% csrf_token %}
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="folder-parent-input" class="form-label" style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Parent Folder</label>
+                    <select id="folder-parent-input" class="form-control" style="width: 100%; height: 40px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-medium); font-size: 0.875rem;">
+                        <option value="">Root Level (No Parent)</option>
+                        {% for f in all_folders %}
+                            <option value="{{ f.id }}" {% if selected_folder_id == f.id %}selected{% endif %}>
+                                {{ f.get_full_path_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
                 <div class="form-group" style="margin-bottom: 24px;">
-                    <label for="group-name-input" class="form-label" style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Group Name</label>
-                    <input type="text" id="group-name-input" class="form-control" placeholder="e.g., Marketing Use Case" style="width: 100%; height: 40px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-medium); font-size: 0.875rem;" required>
-                    <div id="create-group-error" style="color: var(--danger); font-size: 0.8rem; margin-top: 8px; display: none; font-weight: 500;"></div>
+                    <label for="folder-name-input" class="form-label" style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Folder Name</label>
+                    <input type="text" id="folder-name-input" class="form-control" placeholder="e.g., Marketing or Q3 Campaigns" style="width: 100%; height: 40px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-medium); font-size: 0.875rem;" required>
+                    <div id="create-folder-error" style="color: var(--danger); font-size: 0.8rem; margin-top: 8px; display: none; font-weight: 500;"></div>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 12px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeAddGroupModal()" style="height: 38px; padding: 0 18px; border-radius: var(--radius-sm); background: #fff; border: 1px solid var(--border-medium); color: var(--text-secondary); font-weight: 500; cursor: pointer;">Cancel</button>
-                    <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 18px; border-radius: var(--radius-sm); background: var(--primary); color: white; border: none; font-weight: 500; cursor: pointer;">Create Group</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeAddFolderModal()" style="height: 38px; padding: 0 18px; border-radius: var(--radius-sm); background: #fff; border: 1px solid var(--border-medium); color: var(--text-secondary); font-weight: 500; cursor: pointer;">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 18px; border-radius: var(--radius-sm); background: var(--primary); color: white; border: none; font-weight: 500; cursor: pointer;">Create Folder</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Rename Folder Modal -->
+<div id="rename-folder-modal" class="modal-overlay">
+    <div class="modal" style="padding: 28px; position: relative; max-width: 500px; width: 90%;">
+        <div class="modal-header" style="padding: 0 0 16px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-primary);">Rename Folder</h3>
+            <button type="button" class="modal-close" onclick="closeRenameFolderModal()" style="border: none; background: transparent; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 20px 0 0;">
+            <form id="rename-folder-form" onsubmit="submitRenameFolder(event)">
+                {% csrf_token %}
+                <input type="hidden" id="rename-folder-id-input">
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label for="rename-folder-name-input" class="form-label" style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">New Folder Name</label>
+                    <input type="text" id="rename-folder-name-input" class="form-control" style="width: 100%; height: 40px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-medium); font-size: 0.875rem;" required>
+                    <div id="rename-folder-error" style="color: var(--danger); font-size: 0.8rem; margin-top: 8px; display: none; font-weight: 500;"></div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeRenameFolderModal()" style="height: 38px; padding: 0 18px; border-radius: var(--radius-sm); background: #fff; border: 1px solid var(--border-medium); color: var(--text-secondary); font-weight: 500; cursor: pointer;">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 18px; border-radius: var(--radius-sm); background: var(--primary); color: white; border: none; font-weight: 500; cursor: pointer;">Save Name</button>
                 </div>
             </form>
         </div>
@@ -221,7 +392,7 @@
 <div id="manage-pipelines-modal" class="modal-overlay">
     <div class="modal" style="padding: 28px; position: relative; max-width: 600px; width: 90%;">
         <div class="modal-header" style="padding: 0 0 16px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center;">
-            <h3 id="manage-modal-title" style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-primary);">Manage Pipelines for Group</h3>
+            <h3 id="manage-modal-title" style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-primary);">Manage Pipelines in Folder</h3>
             <button type="button" class="modal-close" onclick="closeManagePipelinesModal()" style="border: none; background: transparent; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
         </div>
         <div class="modal-body" style="padding: 20px 0 0;">
@@ -245,6 +416,11 @@
         </div>
     </div>
 </div>
+
+<!-- Delete Mapping Form (Hidden) -->
+<form id="delete-mapping-form" method="post" style="display: none;">
+    {% csrf_token %}
+</form>
 {% endblock %}
 
 {% block extra_js %}
@@ -252,7 +428,6 @@
     const allPipelines = {{ all_pipelines_json|safe }};
 
     document.addEventListener('DOMContentLoaded', () => {
-        // Setup modal close listeners on overlay click
         document.querySelectorAll('.modal-overlay').forEach(overlay => {
             overlay.addEventListener('click', (e) => {
                 if (e.target === overlay) {
@@ -262,31 +437,167 @@
         });
     });
 
-    // Add Group Modal Operations
-    function openAddGroupModal() {
-        document.getElementById('group-name-input').value = '';
-        document.getElementById('create-group-error').style.display = 'none';
-        document.getElementById('add-group-modal').classList.add('active');
-        document.getElementById('group-name-input').focus();
+    // Helper to extract CSRF token
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
     }
 
-    function closeAddGroupModal() {
-        document.getElementById('add-group-modal').classList.remove('active');
+    // Add Folder Modal Operations
+    function openAddFolderModal(parentId) {
+        document.getElementById('folder-name-input').value = '';
+        document.getElementById('create-folder-error').style.display = 'none';
+        const parentSelect = document.getElementById('folder-parent-input');
+        if (parentId) {
+            parentSelect.value = parentId;
+            document.getElementById('add-folder-modal-title').textContent = 'Create New Subfolder';
+        } else {
+            parentSelect.value = '';
+            document.getElementById('add-folder-modal-title').textContent = 'Create New Folder';
+        }
+        document.getElementById('add-folder-modal').classList.add('active');
+        document.getElementById('folder-name-input').focus();
     }
 
-    // Manage Group Pipelines Modal Operations
-    function openManagePipelinesModal(groupId, groupName, assignedIds) {
-        document.getElementById('manage-group-id-input').value = groupId;
-        document.getElementById('manage-modal-title').textContent = `Manage Pipelines for ${groupName}`;
+    function closeAddFolderModal() {
+        document.getElementById('add-folder-modal').classList.remove('active');
+    }
+
+    function submitCreateFolder(event) {
+        event.preventDefault();
+        const nameInput = document.getElementById('folder-name-input');
+        const parentInput = document.getElementById('folder-parent-input');
+        const name = nameInput.value.trim();
+        const parentId = parentInput.value;
+        if (!name) return;
+        
+        const errorDiv = document.getElementById('create-folder-error');
+        errorDiv.style.display = 'none';
+        const csrftoken = getCookie('csrftoken');
+        
+        fetch("{% url 'mappings:create_folder' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': csrftoken
+            },
+            body: `name=${encodeURIComponent(name)}&parent_id=${encodeURIComponent(parentId)}`
+        })
+        .then(response => response.json().then(data => ({ status: response.status, data })))
+        .then(({ status, data }) => {
+            if (status === 200 && data.success) {
+                closeAddFolderModal();
+                window.location.href = `?folder=${data.folder.id}`;
+            } else {
+                errorDiv.textContent = data.error || 'Failed to create folder.';
+                errorDiv.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error creating folder:', error);
+            errorDiv.textContent = 'Server error occurred.';
+            errorDiv.style.display = 'block';
+        });
+    }
+
+    // Rename Folder Modal Operations
+    function openRenameFolderModal(folderId, currentName) {
+        document.getElementById('rename-folder-id-input').value = folderId;
+        document.getElementById('rename-folder-name-input').value = currentName;
+        document.getElementById('rename-folder-error').style.display = 'none';
+        document.getElementById('rename-folder-modal').classList.add('active');
+        document.getElementById('rename-folder-name-input').focus();
+    }
+
+    function closeRenameFolderModal() {
+        document.getElementById('rename-folder-modal').classList.remove('active');
+    }
+
+    function submitRenameFolder(event) {
+        event.preventDefault();
+        const folderId = document.getElementById('rename-folder-id-input').value;
+        const name = document.getElementById('rename-folder-name-input').value.trim();
+        if (!name) return;
+
+        const errorDiv = document.getElementById('rename-folder-error');
+        errorDiv.style.display = 'none';
+        const csrftoken = getCookie('csrftoken');
+
+        fetch(`/mappings/folders/${folderId}/rename/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': csrftoken
+            },
+            body: `name=${encodeURIComponent(name)}`
+        })
+        .then(response => response.json().then(data => ({ status: response.status, data })))
+        .then(({ status, data }) => {
+            if (status === 200 && data.success) {
+                closeRenameFolderModal();
+                window.location.reload();
+            } else {
+                errorDiv.textContent = data.error || 'Failed to rename folder.';
+                errorDiv.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error renaming folder:', error);
+            errorDiv.textContent = 'Server error occurred.';
+            errorDiv.style.display = 'block';
+        });
+    }
+
+    // Delete Folder
+    function deleteFolder(folderId, folderName) {
+        if (!confirm(`Are you sure you want to delete the folder "${folderName}"?\n\nETL Jobs in this folder will NOT be deleted; they will simply move to Unorganized.`)) {
+            return;
+        }
+        
+        const csrftoken = getCookie('csrftoken');
+        
+        fetch(`/mappings/folders/${folderId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrftoken
+            }
+        })
+        .then(response => response.json().then(data => ({ status: response.status, data })))
+        .then(({ status, data }) => {
+            if (status === 200 && data.success) {
+                window.location.href = "?folder=all";
+            } else {
+                alert(data.error || 'Failed to delete folder.');
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting folder:', error);
+            alert('Server error occurred.');
+        });
+    }
+
+    // Manage ETL Jobs in Folder Modal Operations
+    function openManagePipelinesModal(folderId, folderName, assignedIds) {
+        document.getElementById('manage-group-id-input').value = folderId;
+        document.getElementById('manage-modal-title').textContent = `Manage ETL Jobs in ${folderName}`;
         
         const container = document.getElementById('pipelines-checkbox-list');
         container.innerHTML = '';
         
-        // Sort alphabetically
         const sortedPipelines = [...allPipelines].sort((a, b) => a.name.localeCompare(b.name));
         
         if (sortedPipelines.length === 0) {
-            container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 24px;">No active pipelines available.</div>';
+            container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 24px;">No active ETL jobs available.</div>';
         } else {
             sortedPipelines.forEach(p => {
                 const isChecked = assignedIds.includes(p.id);
@@ -306,6 +617,7 @@
         }
         
         document.getElementById('pipeline-search-input').value = '';
+
         document.getElementById('manage-pipelines-modal').classList.add('active');
         document.getElementById('pipeline-search-input').focus();
     }
@@ -319,78 +631,19 @@
         const items = document.querySelectorAll('.pipeline-checkbox-item');
         items.forEach(item => {
             const label = item.querySelector('label').textContent.toLowerCase();
-            if (label.includes(query)) {
-                item.style.display = 'flex';
-            } else {
-                item.style.display = 'none';
-            }
+            item.style.display = label.includes(query) ? 'flex' : 'none';
         });
     }
 
-    // Helper to extract CSRF token
-    function getCookie(name) {
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const cookie = cookies[i].trim();
-                if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                    break;
-                }
-            }
-        }
-        return cookieValue;
-    }
-
-    // Create Group Form Submission
-    function submitCreateGroup(event) {
-        event.preventDefault();
-        const nameInput = document.getElementById('group-name-input');
-        const name = nameInput.value.trim();
-        if (!name) return;
-        
-        const errorDiv = document.getElementById('create-group-error');
-        errorDiv.style.display = 'none';
-        
-        const csrftoken = getCookie('csrftoken');
-        
-        fetch("{% url 'mappings:create_group' %}", {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-CSRFToken': csrftoken
-            },
-            body: `name=${encodeURIComponent(name)}`
-        })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status === 200 && data.success) {
-                closeAddGroupModal();
-                // When we create a group, we want to reload and show it
-                window.location.reload();
-            } else {
-                errorDiv.textContent = data.error || 'Failed to create group.';
-                errorDiv.style.display = 'block';
-            }
-        })
-        .catch(error => {
-            console.error('Error creating group:', error);
-            errorDiv.textContent = 'Server error occurred.';
-            errorDiv.style.display = 'block';
-        });
-    }
-
-    // Manage Group Pipelines Form Submission
     function submitManagePipelines(event) {
         event.preventDefault();
-        const groupId = document.getElementById('manage-group-id-input').value;
+        const folderId = document.getElementById('manage-group-id-input').value;
         const checkboxes = document.querySelectorAll('.pipeline-checkbox-item input[type="checkbox"]:checked');
         const mappingIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
         
         const csrftoken = getCookie('csrftoken');
         
-        fetch(`/mappings/groups/${groupId}/assign/`, {
+        fetch(`/mappings/folders/${folderId}/assign/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -404,7 +657,7 @@
                 closeManagePipelinesModal();
                 window.location.reload();
             } else {
-                alert(data.error || 'Failed to update group assignments.');
+                alert(data.error || 'Failed to update folder assignments.');
             }
         })
         .catch(error => {
@@ -413,33 +666,18 @@
         });
     }
 
-    // AJAX Custom Group Deletion
-    function deleteGroup(groupId, groupName) {
-        if (!confirm(`Are you sure you want to delete the group "${groupName}"?\n\nPipelines in this group will NOT be deleted; they will simply return to their default naming convention groups.`)) {
-            return;
+    // Delete mapping confirm
+    function confirmDeleteMapping(mappingId, mappingName) {
+        if (confirm(`Are you sure you want to delete ETL job "${mappingName}"?`)) {
+            const form = document.getElementById('delete-mapping-form');
+            form.action = `/mappings/${mappingId}/delete/`;
+            form.submit();
         }
-        
-        const csrftoken = getCookie('csrftoken');
-        
-        fetch(`/mappings/groups/${groupId}/delete/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': csrftoken
-            }
-        })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status === 200 && data.success) {
-                // After delete, redirect back to "all" pipelines list
-                window.location.href = "?group=all";
-            } else {
-                alert(data.error || 'Failed to delete group.');
-            }
-        })
-        .catch(error => {
-            console.error('Error deleting group:', error);
-            alert('Server error occurred.');
-        });
+    }
+
+    // Trigger Run — delegates to triggerETL defined in main.js
+    function openTriggerModal(mappingId, mappingName, loadMode) {
+        triggerETL(mappingId);
     }
 </script>
 {% endblock %}

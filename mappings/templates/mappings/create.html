@@ -29,6 +29,19 @@
                     <input type="text" name="name" class="form-control" placeholder="e.g., Daily Account Reconciliation" required>
                 </div>
                 <div class="form-group">
+                    <label>Folder (Optional)</label>
+                    <select name="folder" id="pipeline-folder-select" class="form-control">
+                        <option value="">-- Root Level (No Folder) --</option>
+                        {% for f in all_folders %}
+                            <option value="{{ f.id }}" {% if selected_folder_id == f.id %}selected{% endif %}>
+                                {{ f.get_full_path_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="width: 100%;">
                     <label>Description</label>
                     <input type="text" name="description" class="form-control" placeholder="Optional description" maxlength="1000">
                 </div>
@@ -47,8 +60,11 @@
                     <label>Query Type *</label>
                     <select name="query_type" id="query-type" class="form-control" onchange="toggleQueryType()" required>
                         <option value="table" selected>Table Select (Browse & Map)</option>
-                        <option value="custom_query">Custom SQL Query</option>
+                        <option value="custom_query" id="opt-custom-query">Custom SQL Query</option>
                     </select>
+                    <div id="file-sql-warning" style="display: none; margin-top: 8px; padding: 8px 12px; background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: var(--radius-sm); color: #1E40AF; font-size: 0.825rem;">
+                        <i class="fas fa-info-circle" style="margin-right: 6px;"></i> Flat file connections (CSV/Excel/JSON) only support Table Select mode. Custom SQL is disabled.
+                    </div>
                 </div>
             </div>
             <div id="custom-query-section" style="display: none; margin-top: 16px;">
@@ -613,6 +629,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     toggleQueryType();
     toggleLoadMode();
+    checkSourceConnectionFileType();
+
+    const sourceConn = document.getElementById('source-connection');
+    if (sourceConn) {
+        sourceConn.addEventListener('change', checkSourceConnectionFileType);
+    }
 
     // Bind change listener on source table to load incremental and filter column selectors
     const sourceTable = document.getElementById('source-table');
@@ -760,6 +782,36 @@ document.addEventListener('DOMContentLoaded', function() {
         targetTable.addEventListener('change', loadTargetCols);
     }
 });
+
+function checkSourceConnectionFileType() {
+    const srcSelect = document.getElementById('source-connection');
+    if (!srcSelect) return;
+    const selectedOption = srcSelect.options[srcSelect.selectedIndex];
+    const connType = selectedOption ? (selectedOption.getAttribute('data-type') || '').toLowerCase() : '';
+    const isFile = ['csv', 'excel', 'json'].includes(connType);
+
+    const queryTypeSelect = document.getElementById('query-type');
+    const customOption = document.getElementById('opt-custom-query');
+    const fileNotice = document.getElementById('file-sql-warning');
+
+    if (isFile) {
+        if (customOption) {
+            customOption.disabled = true;
+            customOption.style.display = 'none';
+        }
+        if (queryTypeSelect && queryTypeSelect.value === 'custom_query') {
+            queryTypeSelect.value = 'table';
+            toggleQueryType();
+        }
+        if (fileNotice) fileNotice.style.display = 'block';
+    } else {
+        if (customOption) {
+            customOption.disabled = false;
+            customOption.style.display = '';
+        }
+        if (fileNotice) fileNotice.style.display = 'none';
+    }
+}
 
 function toggleQueryType() {
     const type = document.getElementById('query-type').value;

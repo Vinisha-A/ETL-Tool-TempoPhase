@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Pipeline: {{ mapping.name }}{% endblock %}
-{% block page_title %}Pipeline Details{% endblock %}
+{% block title %}ETL Job: {{ mapping.name }}{% endblock %}
+{% block page_title %}ETL Job Details{% endblock %}
 
 {% block content %}
 <div class="card mb-24">
@@ -134,7 +134,7 @@
 <!-- Column Mappings -->
 <div class="card mb-24">
     <div class="card-header">
-        <h2>Column Pipelines ({{ column_mappings|length }})</h2>
+        <h2>Column Mappings ({{ column_mappings|length }})</h2>
     </div>
     <div class="card-body p-0">
         <div class="table-container">

@@ -2,25 +2,30 @@ import json
 from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth.models import User
-from mappings.models import Mapping, PipelineGroup, PipelineGroupAssignment
+from mappings.models import Mapping, PipelineGroup, PipelineGroupAssignment, PipelineFolder, PipelineFolderAssignment
 from connections.models import DataConnection
 
-class PipelineGroupingTestCase(TestCase):
+class PipelineHierarchyTestCase(TestCase):
     def setUp(self):
         # Create a test user and log in
         self.user = User.objects.create_user(username='testuser', password='password123')
         self.client.login(username='testuser', password='password123')
 
         # Create dummy connections
-        self.conn1 = DataConnection.objects.create(
-            name='Source Connection',
+        self.conn_db = DataConnection.objects.create(
+            name='Postgres Source',
             connection_type='postgresql',
             host='localhost',
             database_name='src_db',
             created_by=self.user
         )
-        self.conn2 = DataConnection.objects.create(
-            name='Target Connection',
+        self.conn_file = DataConnection.objects.create(
+            name='CSV File Source',
+            connection_type='csv',
+            created_by=self.user
+        )
+        self.conn_tgt = DataConnection.objects.create(
+            name='Postgres Target',
             connection_type='postgresql',
             host='localhost',
             database_name='tgt_db',
@@ -35,180 +40,139 @@ class PipelineGroupingTestCase(TestCase):
         except ImportError:
             pass
 
-    def test_naming_convention_submenu_filtering(self):
-        """Verify that mapping names match their naming conventions and filter correctly via GET params."""
-        m1 = Mapping.objects.create(name='LH_to_MKT_UC_sales', source_connection=self.conn1, target_connection=self.conn2, created_by=self.user)
-        m2 = Mapping.objects.create(name='MKT_ORA_TO_MKT_UC_orders', source_connection=self.conn1, target_connection=self.conn2, created_by=self.user)
-        m3 = Mapping.objects.create(name='MKT_CLOUD_PG_TO_MKT_UC_logs', source_connection=self.conn1, target_connection=self.conn2, created_by=self.user)
-        m4 = Mapping.objects.create(name='EDW_TO_LH_records', source_connection=self.conn1, target_connection=self.conn2, created_by=self.user)
-        m5 = Mapping.objects.create(name='Custom_Pipeline', source_connection=self.conn1, target_connection=self.conn2, created_by=self.user)
+    def test_folder_hierarchy_model_methods(self):
+        """Test parent-child folder paths and descendant ID collection."""
+        root = PipelineFolder.objects.create(name='Marketing')
+        sub1 = PipelineFolder.objects.create(name='Campaigns', parent=root)
+        sub2 = PipelineFolder.objects.create(name='2026', parent=sub1)
 
-        # 1. Test All Pipelines group (default list view)
-        response = self.client.get(reverse('mappings:list'))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['mappings']), 5)
+        self.assertEqual(root.get_full_path_name(), 'Marketing')
+        self.assertEqual(sub1.get_full_path_name(), 'Marketing / Campaigns')
+        self.assertEqual(sub2.get_full_path_name(), 'Marketing / Campaigns / 2026')
 
-        # 2. Filter by LH_to_MKT_UC group
-        response = self.client.get(reverse('mappings:list') + '?group=lh_to_mkt_uc')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['mappings']), 1)
-        self.assertEqual(response.context['mappings'][0], m1)
+        path_nodes = [f.name for f in sub2.get_path()]
+        self.assertEqual(path_nodes, ['Marketing', 'Campaigns', '2026'])
 
-        # 3. Filter by MKT_ORA_TO_MKT_UC group
-        response = self.client.get(reverse('mappings:list') + '?group=mkt_ora_to_mkt_uc')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['mappings']), 1)
-        self.assertEqual(response.context['mappings'][0], m2)
+        descendants = root.get_all_descendant_ids()
+        self.assertIn(root.id, descendants)
+        self.assertIn(sub1.id, descendants)
+        self.assertIn(sub2.id, descendants)
 
-        # 4. Filter by MKT_CLOUD_PG_TO_MKT_UC group
-        response = self.client.get(reverse('mappings:list') + '?group=mkt_cloud_pg_to_mkt_uc')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['mappings']), 1)
-        self.assertEqual(response.context['mappings'][0], m3)
+    def test_create_and_rename_folder_api(self):
+        """Test API endpoints for creating root folders, subfolders, and renaming."""
+        create_url = reverse('mappings:create_folder')
 
-        # 5. Filter by EDW_TO_LH group
-        response = self.client.get(reverse('mappings:list') + '?group=edw_to_lh')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['mappings']), 1)
-        self.assertEqual(response.context['mappings'][0], m4)
-
-        # 6. Filter by Other Pipelines group
-        response = self.client.get(reverse('mappings:list') + '?group=other')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['mappings']), 1)
-        self.assertEqual(response.context['mappings'][0], m5)
-
-    def test_create_pipeline_group(self):
-        """Test API endpoint to create a pipeline group."""
-        url = reverse('mappings:create_group')
-        
-        # Valid group creation
-        response = self.client.post(url, {'name': 'Operations'})
-        self.assertEqual(response.status_code, 200)
-        data = json.loads(response.content)
+        # Create root folder
+        resp = self.client.post(create_url, {'name': 'Operations'})
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
         self.assertTrue(data['success'])
-        self.assertEqual(data['group']['name'], 'Operations')
-        
-        # Duplicate group creation
-        response = self.client.post(url, {'name': 'operations'})
-        self.assertEqual(response.status_code, 400)
-        
-        # Reserved name group creation
-        response = self.client.post(url, {'name': 'EDW_TO_LH'})
-        self.assertEqual(response.status_code, 400)
+        root_id = data['folder']['id']
 
-    def test_assign_group_pipelines(self):
-        """Test assigning mappings to custom groups."""
-        group = PipelineGroup.objects.create(name='Sales')
-        m1 = Mapping.objects.create(name='LH_to_MKT_UC_sales', source_connection=self.conn1, target_connection=self.conn2, created_by=self.user)
-        m2 = Mapping.objects.create(name='Custom_Pipeline', source_connection=self.conn1, target_connection=self.conn2, created_by=self.user)
-        
-        url = reverse('mappings:assign_group_pipelines', args=[group.id])
-        
-        # Assign mappings to group
-        payload = json.dumps({'mapping_ids': [m1.id, m2.id]})
-        response = self.client.post(url, payload, content_type='application/json')
-        self.assertEqual(response.status_code, 200)
-        
-        # Verify filtering of display_mappings by custom group
-        response = self.client.get(reverse('mappings:list') + f'?group=custom_{group.id}')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['mappings']), 2)
-        
-        # Reassigned m1 should not appear in its default convention group now
-        response = self.client.get(reverse('mappings:list') + '?group=lh_to_mkt_uc')
-        self.assertEqual(len(response.context['mappings']), 0)
+        # Create subfolder under Operations
+        resp_sub = self.client.post(create_url, {'name': 'Daily Jobs', 'parent_id': root_id})
+        self.assertEqual(resp_sub.status_code, 200)
+        sub_data = json.loads(resp_sub.content)
+        self.assertTrue(sub_data['success'])
+        self.assertEqual(sub_data['folder']['parent_id'], root_id)
+        sub_id = sub_data['folder']['id']
 
-    def test_delete_pipeline_group(self):
-        """Test custom group deletion Cascades assignments cleanly."""
-        group = PipelineGroup.objects.create(name='Marketing')
-        m1 = Mapping.objects.create(name='LH_to_MKT_UC_sales', source_connection=self.conn1, target_connection=self.conn2, created_by=self.user)
-        PipelineGroupAssignment.objects.create(group=group, mapping=m1)
-        
-        url = reverse('mappings:delete_group', args=[group.id])
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 200)
-        
-        # Verify mapping falls back to its default convention group
-        response = self.client.get(reverse('mappings:list') + '?group=lh_to_mkt_uc')
-        self.assertEqual(len(response.context['mappings']), 1)
-        self.assertEqual(response.context['mappings'][0], m1)
+        # Sibling duplicate name should be rejected
+        resp_dup = self.client.post(create_url, {'name': 'Daily Jobs', 'parent_id': root_id})
+        self.assertEqual(resp_dup.status_code, 400)
 
-    def test_create_pipeline_inside_group(self):
-        """Test that creating a new pipeline via POST with a group parameter maps it to that custom group."""
-        group = PipelineGroup.objects.create(name='Finance')
-        
-        create_url = reverse('mappings:create')
-        data = {
-            'name': 'New Finance Pipeline',
-            'source_connection': self.conn1.id,
-            'target_connection': self.conn2.id,
-            'source_table': 'src_tbl',
-            'target_table': 'tgt_tbl',
-            'group': f'custom_{group.id}',
-        }
-        
-        response = self.client.post(create_url, data)
-        self.assertEqual(response.status_code, 302)
-        
-        # Verify the new mapping exists and is assigned to the group
-        mapping = Mapping.objects.get(name='New Finance Pipeline')
-        assignment = PipelineGroupAssignment.objects.filter(mapping=mapping).first()
-        self.assertIsNotNone(assignment)
-        self.assertEqual(assignment.group, group)
+        # Same name under DIFFERENT parent is allowed!
+        resp_other = self.client.post(create_url, {'name': 'Daily Jobs'})
+        self.assertEqual(resp_other.status_code, 200)
 
-    def test_create_pipeline_with_manual_mappings(self):
-        """Test that creating a new pipeline via POST with column_mappings_json representing manual mapping stores it correctly."""
-        import json
-        column_mappings_json = json.dumps([
-            {
-                'source_column': 'user_id',
-                'source_datatype': 'INTEGER',
-                'target_column': 'uid',
-                'target_datatype': 'INTEGER',
-                'operations': ['null_check', 'unique_check']
-            },
-            {
-                'source_column': 'email_address',
-                'source_datatype': 'VARCHAR',
-                'target_column': 'email',
-                'target_datatype': 'VARCHAR',
-                'operations': ['null_check']
-            }
-        ])
+        # Rename subfolder
+        rename_url = reverse('mappings:rename_folder', args=[sub_id])
+        resp_rename = self.client.post(rename_url, {'name': 'Automated Daily Jobs'})
+        self.assertEqual(resp_rename.status_code, 200)
+        r_data = json.loads(resp_rename.content)
+        self.assertEqual(r_data['name'], 'Automated Daily Jobs')
 
-        create_url = reverse('mappings:create')
-        data = {
-            'name': 'Manual Mapped Pipeline',
-            'source_connection': self.conn1.id,
-            'target_connection': self.conn2.id,
-            'source_table': 'src_tbl',
-            'target_table': 'tgt_tbl',
-            'column_mappings_json': column_mappings_json,
-        }
+    def test_folder_filtering_and_breadcrumbs(self):
+        """Verify navigation across folders, subfolders, and breadcrumbs in list view."""
+        folder_sales = PipelineFolder.objects.create(name='Sales')
+        folder_q1 = PipelineFolder.objects.create(name='Q1', parent=folder_sales)
 
-        response = self.client.post(create_url, data)
-        self.assertEqual(response.status_code, 302)
+        m1 = Mapping.objects.create(name='Sales Direct Pipe', source_connection=self.conn_db, target_connection=self.conn_tgt, created_by=self.user)
+        m2 = Mapping.objects.create(name='Sales Q1 Pipe', source_connection=self.conn_db, target_connection=self.conn_tgt, created_by=self.user)
+        m3 = Mapping.objects.create(name='Unorganized Pipe', source_connection=self.conn_db, target_connection=self.conn_tgt, created_by=self.user)
 
-        # Verify mapping was created
-        mapping = Mapping.objects.get(name='Manual Mapped Pipeline')
-        col_mappings = mapping.column_mappings.all().order_by('source_column')
-        self.assertEqual(len(col_mappings), 2)
+        PipelineFolderAssignment.objects.create(group=folder_sales, mapping=m1)
+        PipelineFolderAssignment.objects.create(group=folder_q1, mapping=m2)
 
-        # First mapping
-        cm1 = col_mappings[0]
-        self.assertEqual(cm1.source_column, 'email_address')
-        self.assertEqual(cm1.target_column, 'email')
-        self.assertEqual(cm1.source_datatype, 'VARCHAR')
-        self.assertEqual(cm1.target_datatype, 'VARCHAR')
-        rules1 = [r.operation for r in cm1.rules.all()]
-        self.assertEqual(rules1, ['null_check'])
+        # 1. All Pipelines
+        resp = self.client.get(reverse('mappings:list') + '?folder=all')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context['mappings']), 3)
+        # Root subfolders should include 'Sales'
+        sf_names = [f.name for f in resp.context['subfolders']]
+        self.assertIn('Sales', sf_names)
 
-        # Second mapping
-        cm2 = col_mappings[1]
-        self.assertEqual(cm2.source_column, 'user_id')
-        self.assertEqual(cm2.target_column, 'uid')
-        self.assertEqual(cm2.source_datatype, 'INTEGER')
-        self.assertEqual(cm2.target_datatype, 'INTEGER')
-        rules2 = sorted([r.operation for r in cm2.rules.all()])
-        self.assertEqual(rules2, ['null_check', 'unique_check'])
+        # 2. View Sales folder
+        resp_sales = self.client.get(reverse('mappings:list') + f'?folder={folder_sales.id}')
+        self.assertEqual(resp_sales.status_code, 200)
+        self.assertEqual(len(resp_sales.context['mappings']), 1)
+        self.assertEqual(resp_sales.context['mappings'][0], m1)
+        # Subfolders in Sales should include Q1
+        sf_sales = [f.name for f in resp_sales.context['subfolders']]
+        self.assertIn('Q1', sf_sales)
+        # Breadcrumbs check
+        bc_names = [b['name'] for b in resp_sales.context['breadcrumbs']]
+        self.assertEqual(bc_names, ['All Pipelines', 'Sales'])
+
+        # 3. View Unorganized Pipelines
+        resp_unorg = self.client.get(reverse('mappings:list') + '?folder=unassigned')
+        self.assertEqual(resp_unorg.status_code, 200)
+        self.assertEqual(len(resp_unorg.context['mappings']), 1)
+        self.assertEqual(resp_unorg.context['mappings'][0], m3)
+
+    def test_assign_and_delete_folder(self):
+        """Test assigning mappings and deleting folder."""
+        folder = PipelineFolder.objects.create(name='Finance')
+        m1 = Mapping.objects.create(name='Payroll', source_connection=self.conn_db, target_connection=self.conn_tgt, created_by=self.user)
+        m2 = Mapping.objects.create(name='Invoices', source_connection=self.conn_db, target_connection=self.conn_tgt, created_by=self.user)
+
+        # Assign both to Finance
+        assign_url = reverse('mappings:assign_folder_pipelines', args=[folder.id])
+        resp = self.client.post(assign_url, json.dumps({'mapping_ids': [m1.id, m2.id]}), content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+
+        self.assertEqual(m1.folder, folder)
+        self.assertEqual(m2.folder, folder)
+
+        # Delete folder
+        del_url = reverse('mappings:delete_folder', args=[folder.id])
+        resp_del = self.client.post(del_url)
+        self.assertEqual(resp_del.status_code, 200)
+        self.assertFalse(PipelineFolder.objects.filter(id=folder.id).exists())
+        # Mappings are now unorganized
+        m1.refresh_from_db()
+        self.assertIsNone(m1.folder)
+
+    from unittest.mock import patch
+
+    @patch('connections.connector.ConnectorEngine.test_connection', return_value=(True, 'OK'))
+    def test_file_connection_custom_sql_validation(self, mock_test_conn):
+        """Verify that flat file connections with custom queries produce a clear validation error."""
+        mapping_file_sql = Mapping.objects.create(
+            name='Invalid File SQL Pipe',
+            source_connection=self.conn_file,
+            target_connection=self.conn_tgt,
+            query_type='custom_query',
+            custom_query='SELECT * FROM my_csv',
+            created_by=self.user
+        )
+
+        resp = self.client.get(reverse('validations:api_validate', args=[mapping_file_sql.id]))
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertFalse(data['success'])
+        # Check that error explicitly mentions flat file connections
+        sql_check = next((v for v in data['validations'] if v['name'] == 'Source SQL Query Syntax'), None)
+        self.assertIsNotNone(sql_check)
+        self.assertEqual(sql_check['status'], 'error')
+        self.assertIn('flat file connections', sql_check['message'].lower())

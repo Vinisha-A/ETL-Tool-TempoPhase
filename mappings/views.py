@@ -16,25 +16,14 @@ logger = logging.getLogger(__name__)
 
 @login_required
 def mapping_list_view(request):
-    """List all mappings with submenu group categorization and filtering."""
+    """List ETL jobs and folders in a Jupyter Notebook-style project explorer."""
     query = request.GET.get('query', '').strip()
-    selected_group = request.GET.get('group', 'all').strip()
     selected_creator_name = request.GET.get('created_by_name', '').strip()
     
     mappings = Mapping.objects.filter(is_active=True).select_related(
         'source_connection', 'target_connection', 'created_by'
     )
     
-    if query:
-        mappings = mappings.filter(
-            Q(name__icontains=query) |
-            Q(description__icontains=query) |
-            Q(source_table__icontains=query) |
-            Q(target_table__icontains=query) |
-            Q(source_connection__name__icontains=query) |
-            Q(target_connection__name__icontains=query)
-        )
-        
     if selected_creator_name:
         mappings = mappings.filter(
             Q(created_by__username__icontains=selected_creator_name) |
@@ -42,103 +31,138 @@ def mapping_list_view(request):
             Q(created_by__last_name__icontains=selected_creator_name)
         )
         
-    # Grouping Logic
-    # 1. Fetch custom groups and assignments
-    custom_groups = list(PipelineGroup.objects.all().order_by('name'))
+    all_folders = list(PipelineGroup.objects.all().select_related('parent').order_by('name'))
     assignments = PipelineGroupAssignment.objects.all().select_related('group')
-    mapping_to_custom_group = {a.mapping_id: a.group for a in assignments}
+    mapping_to_folder = {a.mapping_id: a.group for a in assignments}
 
-    # 2. Define default conventions list
-    DEFAULT_CONVENTIONS = [
-        ('lh_to_mkt_uc', 'LH_to_MKT_UC'),
-        ('mkt_ora_to_mkt_uc', 'MKT_ORA_TO_MKT_UC'),
-        ('mkt_cloud_pg_to_mkt_uc', 'MKT_CLOUD_PG_TO_MKT_UC'),
-        ('edw_to_lh', 'EDW_TO_LH'),
-    ]
+    # Hierarchical Folder Resolution
+    selected_folder_param = request.GET.get('folder', '').strip()
+    if not selected_folder_param:
+        group_param = request.GET.get('group', '').strip()
+        if group_param.startswith('custom_'):
+            selected_folder_param = group_param.replace('custom_', '')
+        elif group_param in ('all', 'other', 'unassigned'):
+            selected_folder_param = group_param if group_param != 'other' else 'unassigned'
 
-    # Initialize data structures for counting
-    group_items = {
-        'all': {'key': 'all', 'name': 'All Pipelines', 'count': len(mappings), 'is_custom': False, 'pipelines': []},
-    }
-    for key, canonical in DEFAULT_CONVENTIONS:
-        group_items[key] = {'key': key, 'name': canonical, 'count': 0, 'is_custom': False, 'pipelines': []}
-    for cg in custom_groups:
-        key = f"custom_{cg.id}"
-        group_items[key] = {'key': key, 'id': cg.id, 'name': cg.name, 'count': 0, 'is_custom': True, 'pipelines': []}
-    group_items['other'] = {'key': 'other', 'name': 'Other Pipelines', 'count': 0, 'is_custom': False, 'pipelines': []}
+    if not selected_folder_param:
+        selected_folder_param = 'all'
 
-    # Assign mappings to their group bucket
-    for mapping in mappings:
-        custom_grp = mapping_to_custom_group.get(mapping.id)
-        group_items['all']['pipelines'].append(mapping)
-        if custom_grp:
-            key = f"custom_{custom_grp.id}"
-            if key in group_items:
-                group_items[key]['pipelines'].append(mapping)
-                group_items[key]['count'] += 1
-            else:
-                group_items['other']['pipelines'].append(mapping)
-                group_items['other']['count'] += 1
-        else:
-            assigned_default = False
-            name_lower = mapping.name.lower()
-            for key, canonical in DEFAULT_CONVENTIONS:
-                if name_lower.startswith(key):
-                    group_items[key]['pipelines'].append(mapping)
-                    group_items[key]['count'] += 1
-                    assigned_default = True
-                    break
-            if not assigned_default:
-                group_items['other']['pipelines'].append(mapping)
-                group_items['other']['count'] += 1
+    current_folder = None
+    parent_folder = None
+    subfolders = []
+    breadcrumbs = []
+    selected_folder_name = "All ETL Jobs"
+    selected_folder_id = None
 
-    # Filtered pipelines list to display in table
-    if selected_group not in group_items:
-        selected_group = 'all'
-    
-    display_mappings = group_items[selected_group]['pipelines']
-
-    # Retrieve selected group details for header display and management
-    selected_group_name = "All Pipelines"
-    selected_group_is_custom = False
-    selected_group_id = None
-    selected_group_pipelines_ids = []
-
-    if selected_group == 'other':
-        selected_group_name = "Other Pipelines"
+    if query:
+        # Search mode: find matching jobs across the system and matching folders
+        query_mappings = mappings.filter(
+            Q(name__icontains=query) |
+            Q(description__icontains=query) |
+            Q(source_table__icontains=query) |
+            Q(target_table__icontains=query) |
+            Q(source_connection__name__icontains=query) |
+            Q(target_connection__name__icontains=query)
+        )
+        display_mappings = list(query_mappings)
+        for m in display_mappings:
+            grp = mapping_to_folder.get(m.id)
+            m.folder_path_name = grp.get_full_path_name() if grp else "Root"
+            m.folder_obj = grp
+            
+        subfolders = [f for f in all_folders if query.lower() in f.name.lower()]
+        selected_folder_name = f'Search: "{query}"'
+        breadcrumbs = [
+            {'name': 'All ETL Jobs', 'url': '?folder=all', 'is_active': False},
+            {'name': f'Search: "{query}"', 'url': f'?query={query}', 'is_active': True}
+        ]
+    elif selected_folder_param == 'unassigned':
+        selected_folder_name = "Unorganized ETL Jobs"
+        display_mappings = [m for m in mappings if m.id not in mapping_to_folder]
+        subfolders = []
+        breadcrumbs = [
+            {'name': 'All ETL Jobs', 'url': '?folder=all', 'is_active': False},
+            {'name': 'Unorganized', 'url': '?folder=unassigned', 'is_active': True}
+        ]
+    elif selected_folder_param == 'all':
+        selected_folder_name = "All ETL Jobs"
+        # Jupyter file explorer root view: show root folders and root ETL jobs (those without a folder)
+        subfolders = [f for f in all_folders if f.parent_id is None]
+        display_mappings = [m for m in mappings if m.id not in mapping_to_folder]
+        breadcrumbs = [{'name': 'All ETL Jobs', 'url': '?folder=all', 'is_active': True}]
     else:
-        for key, canonical in DEFAULT_CONVENTIONS:
-            if selected_group == key:
-                selected_group_name = canonical
-                break
-        for cg in custom_groups:
-            if selected_group == f"custom_{cg.id}":
-                selected_group_name = cg.name
-                selected_group_is_custom = True
-                selected_group_id = cg.id
-                selected_group_pipelines_ids = [mid for mid, grp in mapping_to_custom_group.items() if grp.id == cg.id]
-                break
+        try:
+            folder_id = int(selected_folder_param)
+            current_folder = PipelineGroup.objects.filter(id=folder_id).first()
+        except (ValueError, TypeError):
+            current_folder = None
 
-    # Lightweight list of all active pipelines for JS assignment modal
-    all_pipelines_list = list(Mapping.objects.filter(is_active=True).values('id', 'name'))
-    all_pipelines_json = json.dumps(all_pipelines_list)
+        if current_folder:
+            selected_folder_name = current_folder.name
+            selected_folder_id = current_folder.id
+            parent_folder = current_folder.parent
+            subfolders = [f for f in all_folders if f.parent_id == current_folder.id]
+            display_mappings = [m for m in mappings if mapping_to_folder.get(m.id) and mapping_to_folder[m.id].id == current_folder.id]
+            
+            breadcrumbs = [{'name': 'All ETL Jobs', 'url': '?folder=all', 'is_active': False}]
+            path_folders = current_folder.get_path()
+            for i, pf in enumerate(path_folders):
+                is_last = (i == len(path_folders) - 1)
+                breadcrumbs.append({
+                    'name': pf.name,
+                    'url': f'?folder={pf.id}',
+                    'is_active': is_last
+                })
+        else:
+            selected_folder_name = "All ETL Jobs"
+            subfolders = [f for f in all_folders if f.parent_id is None]
+            display_mappings = [m for m in mappings if m.id not in mapping_to_folder]
+            breadcrumbs = [{'name': 'All ETL Jobs', 'url': '?folder=all', 'is_active': True}]
+
+    # Compute items/job counts on each subfolder
+    for sf in subfolders:
+        desc_ids = sf.get_all_descendant_ids()
+        sf.direct_jobs_count = sum(1 for m in mappings if mapping_to_folder.get(m.id) and mapping_to_folder[m.id].id == sf.id)
+        sf.subfolders_count = sum(1 for f in all_folders if f.parent_id == sf.id)
+        sf.total_jobs_count = sum(1 for m in mappings if mapping_to_folder.get(m.id) and mapping_to_folder[m.id].id in desc_ids)
+        sf.total_items_count = sf.direct_jobs_count + sf.subfolders_count
+
+    # Parent folder back navigation URL
+    parent_nav_url = None
+    if current_folder:
+        if current_folder.parent:
+            parent_nav_url = f"?folder={current_folder.parent.id}"
+        else:
+            parent_nav_url = "?folder=all"
+
+    # Lightweight list of all active ETL jobs for JS modals
+    all_jobs_list = list(Mapping.objects.filter(is_active=True).values('id', 'name'))
+    all_jobs_json = json.dumps(all_jobs_list)
 
     # Fetch all active users who can be creators
     creators = User.objects.filter(is_active=True).order_by('first_name', 'username')
 
     return render(request, 'mappings/list.html', {
-        'mappings': display_mappings,  # Main table displays mappings of selected group
+        'mappings': display_mappings,
+        'subfolders': subfolders,
+        'current_folder': current_folder,
+        'parent_folder': parent_folder,
+        'parent_nav_url': parent_nav_url,
+        'breadcrumbs': breadcrumbs,
         'query': query,
-        'selected_group': selected_group,
-        'selected_group_name': selected_group_name,
-        'selected_group_is_custom': selected_group_is_custom,
-        'selected_group_id': selected_group_id,
-        'selected_group_pipelines_ids': selected_group_pipelines_ids,
-        'all_pipelines_json': all_pipelines_json,
+        'selected_folder': selected_folder_param,
+        'selected_folder_id': selected_folder_id,
+        'selected_folder_name': selected_folder_name,
+        'selected_group': f"custom_{selected_folder_id}" if selected_folder_id else selected_folder_param,
+        'selected_group_name': selected_folder_name,
+        'selected_group_id': selected_folder_id,
+        'all_folders': all_folders,
+        'all_pipelines_json': all_jobs_json,
+        'all_jobs_json': all_jobs_json,
         'total_mappings_count': len(mappings),
         'creators': creators,
-        'selected_creator_name': selected_creator_name,
     })
+
 
 
 
@@ -172,7 +196,7 @@ def mapping_create_view(request):
     """Create a new source-target mapping."""
     connections = DataConnection.objects.filter(is_active=True)
     operations = ETLStep.OPERATION_CHOICES
-    selected_group = (request.POST.get('group') or request.GET.get('group', '')).strip()
+    selected_group = (request.POST.get('folder') or request.POST.get('group') or request.GET.get('folder') or request.GET.get('group', '')).strip()
 
     if request.method == 'POST':
         try:
@@ -484,17 +508,30 @@ def mapping_create_view(request):
             except Exception:
                 pass
 
-            messages.success(request, f'Mapping "{name}" created successfully.')
+            messages.success(request, f'ETL Job "{name}" created successfully.')
             return redirect('mappings:detail', mapping_id=mapping.id)
 
         except Exception as e:
             logger.error(f"Error creating mapping: {e}")
-            messages.error(request, f'Error creating mapping: {str(e)}')
+            messages.error(request, f'Error creating ETL job: {str(e)}')
+
+    all_folders = list(PipelineGroup.objects.all().select_related('parent').order_by('name'))
+    selected_folder_id = None
+    if selected_group:
+        if selected_group.startswith('custom_'):
+            try:
+                selected_folder_id = int(selected_group.replace('custom_', ''))
+            except ValueError:
+                pass
+        elif selected_group.isdigit():
+            selected_folder_id = int(selected_group)
 
     return render(request, 'mappings/create.html', {
         'connections': connections,
         'operations': operations,
         'selected_group': selected_group,
+        'all_folders': all_folders,
+        'selected_folder_id': selected_folder_id,
     })
 
 
@@ -515,12 +552,12 @@ def mapping_detail_view(request, mapping_id):
 @login_required
 @contributor_or_admin_required
 def mapping_delete_view(request, mapping_id):
-    """Delete a mapping."""
+    """Delete an ETL job."""
     mapping = get_object_or_404(Mapping, id=mapping_id)
     if request.method == 'POST':
         mapping.is_active = False
         mapping.save()
-        messages.success(request, f'Mapping "{mapping.name}" deleted.')
+        messages.success(request, f'ETL Job "{mapping.name}" deleted.')
     return redirect('mappings:list')
 
 
@@ -813,12 +850,30 @@ def mapping_edit_view(request, mapping_id):
             except Exception:
                 pass
 
-            messages.success(request, f'Mapping "{name}" updated successfully.')
+            # Update folder assignment
+            folder_param = (request.POST.get('folder') or request.POST.get('group', '')).strip()
+            if folder_param:
+                f_id = None
+                if folder_param.startswith('custom_'):
+                    f_id = folder_param.replace('custom_', '')
+                elif folder_param.isdigit():
+                    f_id = folder_param
+                if f_id:
+                    try:
+                        folder_obj = PipelineGroup.objects.get(id=int(f_id))
+                        PipelineGroupAssignment.objects.filter(mapping=mapping).delete()
+                        PipelineGroupAssignment.objects.create(group=folder_obj, mapping=mapping)
+                    except PipelineGroup.DoesNotExist:
+                        pass
+            elif 'folder' in request.POST or 'group' in request.POST:
+                PipelineGroupAssignment.objects.filter(mapping=mapping).delete()
+
+            messages.success(request, f'ETL Job "{name}" updated successfully.')
             return redirect('mappings:detail', mapping_id=mapping.id)
 
         except Exception as e:
             logger.error(f"Error editing mapping: {e}")
-            messages.error(request, f'Error editing mapping: {str(e)}')
+            messages.error(request, f'Error editing ETL job: {str(e)}')
 
     # GET request: Prepare JSON config of current mapping
     from django.core.serializers.json import DjangoJSONEncoder
@@ -894,39 +949,199 @@ def mapping_edit_view(request, mapping_id):
     }
     mapping_json = json.dumps(draft_data, cls=DjangoJSONEncoder)
 
+    all_folders = list(PipelineGroup.objects.all().select_related('parent').order_by('name'))
+    selected_folder_id = mapping.folder.id if mapping.folder else None
+
     return render(request, 'mappings/edit.html', {
         'mapping': mapping,
         'mapping_json': mapping_json,
         'connections': connections,
         'operations': operations,
+        'all_folders': all_folders,
+        'selected_folder_id': selected_folder_id,
     })
 
 
 @login_required
 @contributor_or_admin_required
 def create_pipeline_group(request):
-    """AJAX endpoint to create a new custom group."""
+    """AJAX endpoint to create a new folder (root or subfolder)."""
     if request.method == 'POST':
-        name = request.POST.get('name', '').strip()
-        if not name:
-            return JsonResponse({'success': False, 'error': 'Group name is required.'}, status=400)
-        if PipelineGroup.objects.filter(name__iexact=name).exists():
-            return JsonResponse({'success': False, 'error': 'A group with this name already exists.'}, status=400)
+        try:
+            data = json.loads(request.body)
+            name = data.get('name', '').strip()
+            parent_id = str(data.get('parent_id', '')).strip()
+        except Exception:
+            name = request.POST.get('name', '').strip()
+            parent_id = request.POST.get('parent_id', '').strip() or request.POST.get('parent', '').strip()
         
-        # Check against default convention names to avoid conflict
-        default_names = ['LH_to_MKT_UC', 'MKT_ORA_TO_MKT_UC', 'MKT_CLOUD_PG_TO_MKT_UC', 'EDW_TO_LH', 'Other Pipelines']
-        if name.lower() in [d.lower() for d in default_names]:
-            return JsonResponse({'success': False, 'error': 'This name is reserved for default groups.'}, status=400)
+        if not name:
+            return JsonResponse({'success': False, 'error': 'Folder name is required.'}, status=400)
+        
+        parent = None
+        if parent_id and parent_id not in ('', '0', 'none', 'null', 'root'):
+            try:
+                parent = PipelineGroup.objects.get(id=int(parent_id))
+            except (PipelineGroup.DoesNotExist, ValueError):
+                return JsonResponse({'success': False, 'error': 'Selected parent folder does not exist.'}, status=400)
+        
+        if PipelineGroup.objects.filter(parent=parent, name__iexact=name).exists():
+            parent_name = parent.name if parent else "Root"
+            return JsonResponse({'success': False, 'error': f"A folder named '{name}' already exists in '{parent_name}'."}, status=400)
             
-        group = PipelineGroup.objects.create(name=name)
-        return JsonResponse({'success': True, 'group': {'id': group.id, 'name': group.name}})
+        group = PipelineGroup.objects.create(name=name, parent=parent)
+        return JsonResponse({
+            'success': True,
+            'group': {
+                'id': group.id,
+                'name': group.name,
+                'parent_id': group.parent_id,
+                'path_name': group.get_full_path_name(),
+            },
+            'folder': {
+                'id': group.id,
+                'name': group.name,
+                'parent_id': group.parent_id,
+                'path_name': group.get_full_path_name(),
+            }
+        })
+    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+
+@login_required
+@contributor_or_admin_required
+def rename_pipeline_group(request, group_id):
+    """AJAX endpoint to rename a folder."""
+    group = get_object_or_404(PipelineGroup, id=group_id)
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            name = data.get('name', '').strip()
+        except Exception:
+            name = request.POST.get('name', '').strip()
+
+        if not name:
+            return JsonResponse({'success': False, 'error': 'Folder name is required.'}, status=400)
+        
+        if PipelineGroup.objects.filter(parent=group.parent, name__iexact=name).exclude(id=group.id).exists():
+            return JsonResponse({'success': False, 'error': f"A folder named '{name}' already exists in this location."}, status=400)
+            
+        group.name = name
+        group.save()
+        return JsonResponse({'success': True, 'name': group.name, 'path_name': group.get_full_path_name()})
+    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+
+@login_required
+@contributor_or_admin_required
+def move_pipeline_group(request, group_id):
+    """AJAX endpoint to move a folder to a new parent folder or to root."""
+    group = get_object_or_404(PipelineGroup, id=group_id)
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            target_parent_id = data.get('target_parent_id')
+        except Exception:
+            target_parent_id = request.POST.get('target_parent_id')
+
+        target_parent = None
+        if target_parent_id and str(target_parent_id).strip() not in ('', '0', 'none', 'null', 'root'):
+            try:
+                target_parent = PipelineGroup.objects.get(id=int(target_parent_id))
+            except (PipelineGroup.DoesNotExist, ValueError):
+                return JsonResponse({'success': False, 'error': 'Target destination folder does not exist.'}, status=400)
+
+            if target_parent.id == group.id:
+                return JsonResponse({'success': False, 'error': 'Cannot move a folder into itself.'}, status=400)
+
+            if target_parent.id in group.get_all_descendant_ids():
+                return JsonResponse({'success': False, 'error': 'Cannot move a folder into one of its own subfolders.'}, status=400)
+
+        if PipelineGroup.objects.filter(parent=target_parent, name__iexact=group.name).exclude(id=group.id).exists():
+            dest_name = target_parent.name if target_parent else "Root"
+            return JsonResponse({'success': False, 'error': f"A folder named '{group.name}' already exists in '{dest_name}'."}, status=400)
+
+        group.parent = target_parent
+        group.save()
+        return JsonResponse({
+            'success': True,
+            'folder': {
+                'id': group.id,
+                'name': group.name,
+                'parent_id': group.parent_id,
+                'path_name': group.get_full_path_name(),
+            }
+        })
+    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+
+@login_required
+@contributor_or_admin_required
+def rename_mapping_view(request, mapping_id):
+    """AJAX endpoint to rename an ETL Job."""
+    mapping = get_object_or_404(Mapping, id=mapping_id, is_active=True)
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            name = data.get('name', '').strip()
+        except Exception:
+            name = request.POST.get('name', '').strip()
+
+        if not name:
+            return JsonResponse({'success': False, 'error': 'ETL Job name is required.'}, status=400)
+
+        mapping.name = name
+        mapping.modified_by = request.user
+        mapping.save()
+        return JsonResponse({'success': True, 'name': mapping.name, 'id': mapping.id})
+    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+
+@login_required
+@contributor_or_admin_required
+def move_mappings_view(request):
+    """AJAX endpoint to move one or more ETL Jobs to a destination folder or to Root."""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            mapping_ids = data.get('mapping_ids', [])
+            target_folder_id = data.get('target_folder_id')
+        except Exception:
+            mapping_ids = request.POST.getlist('mapping_ids')
+            target_folder_id = request.POST.get('target_folder_id')
+
+        if not mapping_ids:
+            return JsonResponse({'success': False, 'error': 'No ETL Jobs selected to move.'}, status=400)
+
+        target_folder = None
+        if target_folder_id and str(target_folder_id).strip() not in ('', '0', 'none', 'null', 'root'):
+            try:
+                target_folder = PipelineGroup.objects.get(id=int(target_folder_id))
+            except (PipelineGroup.DoesNotExist, ValueError):
+                return JsonResponse({'success': False, 'error': 'Target destination folder does not exist.'}, status=400)
+
+        for mid in mapping_ids:
+            try:
+                m = Mapping.objects.get(id=int(mid), is_active=True)
+                PipelineGroupAssignment.objects.filter(mapping=m).delete()
+                if target_folder:
+                    PipelineGroupAssignment.objects.create(group=target_folder, mapping=m)
+            except (Mapping.DoesNotExist, ValueError):
+                continue
+
+        dest_name = target_folder.name if target_folder else "Root"
+        return JsonResponse({
+            'success': True,
+            'target_folder_id': target_folder.id if target_folder else None,
+            'target_folder_name': dest_name
+        })
     return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
 
 
 @login_required
 @contributor_or_admin_required
 def assign_group_pipelines(request, group_id):
-    """AJAX endpoint to assign pipelines to a custom group."""
+    """AJAX endpoint to assign pipelines to a folder."""
     group = get_object_or_404(PipelineGroup, id=group_id)
     if request.method == 'POST':
         try:
@@ -959,12 +1174,14 @@ def assign_group_pipelines(request, group_id):
 @login_required
 @contributor_or_admin_required
 def delete_pipeline_group(request, group_id):
-    """AJAX endpoint to delete a custom group."""
+    """AJAX endpoint to delete a folder and its nested subfolders. Existing ETL Jobs are preserved at root level."""
     group = get_object_or_404(PipelineGroup, id=group_id)
     if request.method == 'POST':
         group.delete()
         return JsonResponse({'success': True})
     return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+
 
 
 

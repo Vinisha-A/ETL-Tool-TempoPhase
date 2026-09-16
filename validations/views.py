@@ -136,38 +136,46 @@ def api_validate_pipeline(request, mapping_id):
 
     # 3. Source Table / Custom Query Check
     if mapping.query_type == 'custom_query':
-        query = mapping.custom_query or ''
-        if not query.strip():
-            validations.append({'name': 'Source Dataset', 'status': 'error', 'message': 'Custom query is empty.'})
+        if mapping.source_connection and mapping.source_connection.is_file:
+            validations.append({
+                'name': 'Source SQL Query Syntax',
+                'status': 'error',
+                'message': 'Cannot execute SQL on flat file connections (CSV/Excel/JSON). Please edit this pipeline and switch Query Type to "Table Select".'
+            })
             has_critical_error = True
         else:
-            # Check read-only SQL safety
-            import re
-            clean_query = re.sub(r'--.*$', '', query, flags=re.MULTILINE)
-            clean_query = re.sub(r'/\*.*?\*/', '', clean_query, flags=re.DOTALL)
-            forbidden_pattern = re.compile(r'\b(insert|update|delete|drop|alter|truncate)\b', re.IGNORECASE)
-            match = forbidden_pattern.search(clean_query)
-            if match:
-                validations.append({'name': 'Source Query Safety', 'status': 'error', 'message': f"Destructive SQL operation detected in custom query: '{match.group(1).upper()}'."})
+            query = mapping.custom_query or ''
+            if not query.strip():
+                validations.append({'name': 'Source Dataset', 'status': 'error', 'message': 'Custom query is empty.'})
                 has_critical_error = True
             else:
-                # Syntax Check: Try to execute query with LIMIT 0
-                try:
-                    if not source_engine.is_mocked():
-                        db_type = str(mapping.source_connection.connection_type).lower()
-                        if db_type == 'oracle':
-                            check_query = f"SELECT * FROM ({query}) WHERE ROWNUM = 0"
-                        elif db_type == 'db2':
-                            check_query = f"SELECT * FROM ({query}) AS temp FETCH FIRST 0 ROWS ONLY"
-                        elif db_type in ('mssql', 'sqlserver'):
-                            check_query = f"SELECT TOP 0 * FROM ({query}) AS temp"
-                        else:
-                            check_query = f"SELECT * FROM ({query}) LIMIT 0"
-                        source_engine.execute_query(check_query)
-                    validations.append({'name': 'Source SQL Query Syntax', 'status': 'success', 'message': 'Custom SQL query syntax is valid.'})
-                except Exception as sqle:
-                    validations.append({'name': 'Source SQL Query Syntax', 'status': 'error', 'message': f'SQL query validation failed: {str(sqle)}'})
+                # Check read-only SQL safety
+                import re
+                clean_query = re.sub(r'--.*$', '', query, flags=re.MULTILINE)
+                clean_query = re.sub(r'/\*.*?\*/', '', clean_query, flags=re.DOTALL)
+                forbidden_pattern = re.compile(r'\b(insert|update|delete|drop|alter|truncate)\b', re.IGNORECASE)
+                match = forbidden_pattern.search(clean_query)
+                if match:
+                    validations.append({'name': 'Source Query Safety', 'status': 'error', 'message': f"Destructive SQL operation detected in custom query: '{match.group(1).upper()}'."})
                     has_critical_error = True
+                else:
+                    # Syntax Check: Try to execute query with LIMIT 0
+                    try:
+                        if not source_engine.is_mocked():
+                            db_type = str(mapping.source_connection.connection_type).lower()
+                            if db_type == 'oracle':
+                                check_query = f"SELECT * FROM ({query}) WHERE ROWNUM = 0"
+                            elif db_type == 'db2':
+                                check_query = f"SELECT * FROM ({query}) AS temp FETCH FIRST 0 ROWS ONLY"
+                            elif db_type in ('mssql', 'sqlserver'):
+                                check_query = f"SELECT TOP 0 * FROM ({query}) AS temp"
+                            else:
+                                check_query = f"SELECT * FROM ({query}) LIMIT 0"
+                            source_engine.execute_query(check_query)
+                        validations.append({'name': 'Source SQL Query Syntax', 'status': 'success', 'message': 'Custom SQL query syntax is valid.'})
+                    except Exception as sqle:
+                        validations.append({'name': 'Source SQL Query Syntax', 'status': 'error', 'message': f'SQL query validation failed: {str(sqle)}'})
+                        has_critical_error = True
     else:
         # Table Select mode
         if not mapping.source_table:
